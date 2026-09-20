@@ -1,0 +1,56 @@
+{
+  "name": "keepdrop",
+  "version": "0.1.0",
+  "description": "Jev-compatible System One on the OpenAI-compatible API you already have. Verbatim keep/drop compaction. No waitlist, no weights.",
+  "type": "module",
+  "bin": {
+    "keepdrop": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "examples",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "eval": "tsx src/run-eval.ts",
+    "keepdrop": "tsx src/cli.ts",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "system-one",
+    "jev",
+    "compaction",
+    "typed-decisions",
+    "openai-compatible",
+    "keep-drop"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kabishou-lab/keepdrop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kabishou-lab/keepdrop/issues"
+  },
+  "homepage": "https://github.com/kabishou-lab/keepdrop#readme",
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

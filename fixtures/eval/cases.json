@@ -1,0 +1,217 @@
+{
+  "cases": [
+    {
+      "id": "parse-fix",
+      "gold": {
+        "search_old": "drop",
+        "read_file": "keep",
+        "test_before": "drop_result"
+      },
+      "transcript": {
+        "goal": "Fix src/parse.ts tests",
+        "messages": [
+          { "role": "user", "content": "Fix the failing parse test." },
+          {
+            "role": "assistant",
+            "content": "search",
+            "tool_calls": [
+              {
+                "id": "search_old",
+                "name": "grep",
+                "arguments": "{\"pattern\":\"parseOld\"} [stale]"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "search_old",
+            "content": "legacy_parse.ts is unused [stale]"
+          },
+          {
+            "role": "assistant",
+            "content": "read",
+            "tool_calls": [
+              { "id": "read_file", "name": "read", "arguments": "{\"path\":\"src/parse.ts\"}" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "read_file",
+            "content": "export function parse(input: string) { return input.split(',') }"
+          },
+          {
+            "role": "assistant",
+            "content": "test",
+            "tool_calls": [
+              {
+                "id": "test_before",
+                "name": "bash",
+                "arguments": "{\"command\":\"npx vitest run src/parse.test.ts\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "test_before",
+            "content": "FAIL expected [a,b] [superseded] log from before the fix"
+          },
+          {
+            "role": "assistant",
+            "content": "edit",
+            "tool_calls": [
+              { "id": "edit_now", "name": "edit", "arguments": "{\"path\":\"src/parse.ts\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "edit_now", "content": "ok" },
+          {
+            "role": "assistant",
+            "content": "retest",
+            "tool_calls": [
+              { "id": "test_after", "name": "bash", "arguments": "{\"command\":\"npx vitest run\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "test_after", "content": "PASS" },
+          { "role": "assistant", "content": "Fixed parse and tests pass." }
+        ]
+      }
+    },
+    {
+      "id": "router-debug",
+      "gold": {
+        "ls_root": "drop",
+        "read_router": "keep",
+        "curl_old": "drop_result"
+      },
+      "transcript": {
+        "goal": "Why does /health 404?",
+        "messages": [
+          { "role": "user", "content": "Local server /health returns 404." },
+          {
+            "role": "assistant",
+            "content": "ls",
+            "tool_calls": [
+              { "id": "ls_root", "name": "bash", "arguments": "{\"command\":\"ls\"} [stale]" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "ls_root",
+            "content": "README.md src dist [stale] listing"
+          },
+          {
+            "role": "assistant",
+            "content": "read router",
+            "tool_calls": [
+              { "id": "read_router", "name": "read", "arguments": "{\"path\":\"src/router.ts\"}" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "read_router",
+            "content": "app.get('/ready', handler) // no /health"
+          },
+          {
+            "role": "assistant",
+            "content": "curl",
+            "tool_calls": [
+              { "id": "curl_old", "name": "bash", "arguments": "{\"command\":\"curl -s localhost:3000/health\"}" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "curl_old",
+            "content": "404 not found [superseded] before route add"
+          },
+          {
+            "role": "assistant",
+            "content": "patch",
+            "tool_calls": [
+              { "id": "patch_route", "name": "edit", "arguments": "{\"path\":\"src/router.ts\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "patch_route", "content": "added /health" },
+          {
+            "role": "assistant",
+            "content": "curl again",
+            "tool_calls": [
+              { "id": "curl_new", "name": "bash", "arguments": "{\"command\":\"curl -s localhost:3000/health\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "curl_new", "content": "ok" },
+          { "role": "assistant", "content": "/health was missing. Added it." }
+        ]
+      }
+    },
+    {
+      "id": "lockfile",
+      "gold": {
+        "cat_pkg": "keep",
+        "npm_outdated": "drop_result",
+        "find_lock_old": "drop"
+      },
+      "transcript": {
+        "goal": "Why is CI using an old lockfile?",
+        "messages": [
+          { "role": "user", "content": "CI installed different versions than my laptop." },
+          {
+            "role": "assistant",
+            "content": "find",
+            "tool_calls": [
+              {
+                "id": "find_lock_old",
+                "name": "bash",
+                "arguments": "{\"command\":\"find . -name '*lock*'\"} [stale]"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "find_lock_old",
+            "content": "./npm-shrinkwrap.json [stale] leftover"
+          },
+          {
+            "role": "assistant",
+            "content": "read package",
+            "tool_calls": [
+              { "id": "cat_pkg", "name": "read", "arguments": "{\"path\":\"package.json\"}" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "cat_pkg",
+            "content": "{ \"name\": \"demo\", \"packageManager\": \"pnpm@9\" }"
+          },
+          {
+            "role": "assistant",
+            "content": "outdated",
+            "tool_calls": [
+              { "id": "npm_outdated", "name": "bash", "arguments": "{\"command\":\"npm outdated\"}" }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "npm_outdated",
+            "content": "vitest 3.0.0 [superseded] before pnpm install"
+          },
+          {
+            "role": "assistant",
+            "content": "ls lock",
+            "tool_calls": [
+              { "id": "ls_lock", "name": "bash", "arguments": "{\"command\":\"ls pnpm-lock.yaml\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "ls_lock", "content": "pnpm-lock.yaml" },
+          {
+            "role": "assistant",
+            "content": "ci yaml",
+            "tool_calls": [
+              { "id": "read_ci", "name": "read", "arguments": "{\"path\":\".github/workflows/ci.yml\"}" }
+            ]
+          },
+          { "role": "tool", "tool_call_id": "read_ci", "content": "run: npm ci" },
+          { "role": "assistant", "content": "CI calls npm ci but the repo is pnpm." }
+        ]
+      }
+    }
+  ]
+}
