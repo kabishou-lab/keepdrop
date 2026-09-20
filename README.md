@@ -12,17 +12,21 @@ This is not Jev. Numbers are ordinary model estimates, not RLCD-calibrated proba
 ## 60 seconds
 
 ```bash
-npm install keepdrop
-export OPENAI_API_KEY=...
-export OPENAI_BASE_URL=https://api.deepseek.com/v1   # any OpenAI-compatible base
-export OPENAI_MODEL=deepseek-chat
+cp .env.example .env   # then put your key in .env (never commit it)
+# lab default:
+# OPENAI_BASE_URL=https://api.minimaxi.com/v1
+# OPENAI_MODEL=MiniMax-M3
 
-npx keepdrop compact fixtures/transcript.sample.json -o compact.json
-# no key yet? fixture demo only (not a model):
-npx keepdrop compact fixtures/transcript.sample.json --markers
+npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
 ```
 
-Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history. `--markers` is only for fixtures tagged `[stale]` / `[superseded]`.
+Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
+
+Offline fixture demo (not a model):
+
+```bash
+npx tsx src/cli.ts compact fixtures/transcript.sample.json --markers
+```
 
 ## What compact does
 
@@ -33,17 +37,27 @@ Without a key, compact **fail-opens**: original messages are unchanged. An outag
 
 Nothing is summarized. Nothing is paraphrased.
 
-Captured 2026-09-20, no API key, `--markers` on the bundled sample:
+Captured 2026-09-20 against **MiniMax-M3** (`https://api.minimaxi.com/v1`):
 
 ```
 keepdrop compact  fixtures/transcript.sample.json
   eligible     3
   keep         1
-  drop_result  1
-  drop         1
-  chars        2268 → 2129  (93.9%)
+  drop_result  0
+  drop         2
+  chars        2268 → 2006  (88.4%)
   fail_open    false
-  model        keyword-baseline
+  model        MiniMax-M3
+  latency_ms   7999
+```
+
+`decide` on a billing ticket, same backend (not Jev):
+
+```
+urgent     noul 0.95
+team       billing 0.95
+severity   2 (blocking)
+399 input tokens · 153 output · 3277 ms · json_object
 ```
 
 ## Library
@@ -74,16 +88,24 @@ const verdict = await decide({
 Bundled fixtures are **synthetic coding-agent transcripts**, not product or medical data.
 
 ```bash
-npx keepdrop eval
-# OPENAI_API_KEY unset → keyword baseline (not a model)
-# OPENAI_API_KEY set   → your OpenAI-compatible chat model
+npx tsx src/cli.ts eval
 ```
 
 | backend | pair-action agreement | chars after/before | fail-open cases | latency |
 |---|---:|---:|---:|---:|
 | keyword-baseline (not a model) | 100.0% (9/9) | 98.5% | 0 | 0 ms |
+| MiniMax-M3 (2026-09-20, this repo) | 77.8% (7/9) | 97.4% | 0 | 37852 ms |
 
-Live LLM numbers belong in this table only after `OPENAI_API_KEY` is set. They will still **not** be Jev.
+The 2 disagreements: MiniMax truncated one source-read it could have kept, and dropped one old curl instead of only dropping its result. Fail-open stayed at 0.
+
+Still **not Jev**. MiniMax is an ordinary chat model with `reasoning_split`; keepdrop strips `<think>` and reads `reasoning_content`.
+
+## MiniMax notes
+
+- Host: `https://api.minimaxi.com/v1` · model `MiniMax-M3`
+- keepdrop sends `reasoning_split: true`, skips `json_schema`, tries `json_object` then plain JSON
+- Default timeout 90s
+- Copy `.env.example` → `.env`. `.env` is gitignored.
 
 ## What this is not
 
@@ -111,10 +133,10 @@ Generic transcript JSON. Convert Chat Completions-style dumps with [`examples/fr
 | var | meaning |
 |---|---|
 | `OPENAI_API_KEY` | required for live calls |
-| `OPENAI_BASE_URL` | default `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | default `gpt-4o-mini` |
+| `OPENAI_BASE_URL` | default `https://api.minimaxi.com/v1` |
+| `OPENAI_MODEL` | default `MiniMax-M3` |
 
-JSON Schema first, then `json_object`, then a prompted JSON fallback. Providers that only speak Chat Completions still work.
+On MiniMax: `json_object` then prompt JSON. On other OpenAI-compatible hosts: JSON Schema, then `json_object`, then prompt.
 
 ## License
 

@@ -141,10 +141,10 @@ describe("compactTranscript", () => {
         response_format: "json_object",
       },
       answers: {
-        keep_call_c1: { type: "noul", noul: 0.1, confidence: 0.6 },
-        keep_result_c1: { type: "noul", noul: 0.1, confidence: 0.6 },
-        keep_call_c2: { type: "noul", noul: 0.9, confidence: 0.6 },
-        keep_result_c2: { type: "noul", noul: 0.1, confidence: 0.6 },
+        call0: { type: "noul", noul: 0.1, confidence: 0.6 },
+        result0: { type: "noul", noul: 0.1, confidence: 0.6 },
+        call1: { type: "noul", noul: 0.9, confidence: 0.6 },
+        result1: { type: "noul", noul: 0.1, confidence: 0.6 },
       },
     });
     const result = await compactTranscript(t, {
@@ -178,10 +178,10 @@ describe("compactTranscript", () => {
           response_format: "prompt",
         },
         answers: {
-          keep_call_c1: { type: "noul", noul: 0.01, confidence: 1 },
-          keep_result_c1: { type: "noul", noul: 0.01, confidence: 1 },
-          keep_call_c2: { type: "noul", noul: 0.01, confidence: 1 },
-          keep_result_c2: { type: "noul", noul: 0.01, confidence: 1 },
+          call0: { type: "noul", noul: 0.01, confidence: 1 },
+          result0: { type: "noul", noul: 0.01, confidence: 1 },
+          call1: { type: "noul", noul: 0.01, confidence: 1 },
+          result1: { type: "noul", noul: 0.01, confidence: 1 },
         },
       }),
     });

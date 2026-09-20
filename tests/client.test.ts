@@ -89,6 +89,23 @@ describe("decide", () => {
     expect(result.answers.flag).toMatchObject({ noul: 0.2 });
   });
 
+  it("accepts a bare noul number", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ flag: 0.42 }) } }],
+        }),
+        { status: 200 },
+      );
+    const result = await decide(
+      { state: "x", questions: { flag: noul("true?") } },
+      { apiKey: "k", baseUrl: "https://example.test/v1", model: "m", fetchImpl },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.answers.flag).toMatchObject({ type: "noul", noul: 0.42 });
+  });
+
   it("returns ok:false on HTTP errors instead of throwing", async () => {
     const fetchImpl: typeof fetch = async () => new Response("nope", { status: 500 });
     const result = await decide(

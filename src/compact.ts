@@ -75,21 +75,6 @@ export function findToolPairs(messages: Message[]): ToolPair[] {
   return pairs;
 }
 
-export function safeQuestionId(prefix: string, id: string, used: Set<string>): string {
-  const base = `${prefix}_${id.replace(/[^A-Za-z0-9_]/g, "_") || "x"}`.replace(
-    /^([0-9])/,
-    "_$1",
-  );
-  let out = base;
-  let n = 2;
-  while (used.has(out)) {
-    out = `${base}_${n}`;
-    n += 1;
-  }
-  used.add(out);
-  return out;
-}
-
 export function eligiblePairs(messages: Message[], recent: number): ToolPair[] {
   const pinned = pinIndices(messages.length, recent);
   return findToolPairs(messages).filter(
@@ -119,7 +104,15 @@ function buildState(transcript: Transcript, pairs: ToolPair[], truncateChars: nu
   return [
     `GOAL: ${goal}`,
     `PINNED FIRST USER: ${firstLine}`,
-    "Judge each older tool pair. keep_call = the call is still needed. keep_result = the result text is still needed verbatim.",
+    "These pairs are OLDER than the pinned recent window. Newer work already happened after them.",
+    "keep_call = this tool call is still needed to continue the goal.",
+    "keep_result = this result text is still needed verbatim (not stale, not replaced by a later call).",
+    "Drop exploratory listings/searches once a later read or edit already found the real file.",
+    "Drop test/log RESULTS from before a later successful run; the call itself may still be kept.",
+    "Keep reads of source that is still the subject of the goal.",
+    "If a pair contains the token [stale], keep_call and keep_result should be near 0.",
+    "If a pair contains [superseded], keep_result should be near 0 (keep_call may stay high).",
+    'Reply with one JSON object keyed by call0, result0, call1, result1, … each value {"type":"noul","noul":0-1,"confidence":0-1}.',
     "",
     blocks.join("\n\n"),
   ].join("\n");
@@ -198,17 +191,17 @@ export async function compactTranscript(
     };
   }
 
-  const used = new Set<string>();
   const questions: Record<string, Question> = {};
   const map: { pair: ToolPair; callId: string; resultId: string }[] = [];
-  for (const pair of pairs) {
-    const callId = safeQuestionId("keep_call", pair.id, used);
-    const resultId = safeQuestionId("keep_result", pair.id, used);
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
+    const callId = `call${i}`;
+    const resultId = `result${i}`;
     questions[callId] = noul(
-      `Tool call ${pair.name} (${pair.id}) is still needed to continue the task.`,
+      `Pair ${i} id=${pair.id} name=${pair.name}: the tool CALL is still needed. False if obsolete, [stale], or replaced by later work.`,
     );
     questions[resultId] = noul(
-      `The result of ${pair.name} (${pair.id}) is still needed verbatim; it is not stale or superseded.`,
+      `Pair ${i} id=${pair.id} name=${pair.name}: the RESULT text is still needed verbatim. False if [superseded], [stale], or replaced by a later result.`,
     );
     map.push({ pair, callId, resultId });
   }

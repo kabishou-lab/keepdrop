@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compactTranscript } from "./compact.js";
+import { loadEnv } from "./env.js";
 import type { DecideResult, Question, Transcript } from "./types.js";
 
 export interface EvalCase {
@@ -31,10 +32,11 @@ export function agreement(
   return { hit, total: ids.length };
 }
 
-function pairBlockFor(state: string, toolId: string): string {
+function pairBlockFor(state: string, pairIndex: number, toolId: string): string {
   const chunks = state.split("[pair ");
   for (const chunk of chunks) {
-    if (chunk.includes(`id=${toolId}`)) return chunk;
+    if (pairIndex >= 0 && chunk.startsWith(`${pairIndex}]`)) return chunk;
+    if (toolId && chunk.includes(`id=${toolId}`)) return chunk;
   }
   return "";
 }
@@ -47,9 +49,11 @@ export async function keywordJudge(
   const answers: NonNullable<Extract<DecideResult, { ok: true }>["answers"]> = {};
   for (const [qid, q] of Object.entries(questions)) {
     if (q.type !== "noul") continue;
-    const isResult = qid.startsWith("keep_result_");
-    const toolId = qid.replace(/^keep_(?:call|result)_/, "");
-    const block = pairBlockFor(state, toolId);
+    const indexed = qid.match(/^(?:kc_|kr_|call|result)(\d+)$/);
+    const isResult = /^(?:kr_|result)/.test(qid) || qid.startsWith("keep_result_");
+    const toolId = indexed ? "" : qid.replace(/^keep_(?:call|result)_/, "");
+    const pairIndex = indexed ? Number(indexed[1]) : -1;
+    const block = pairBlockFor(state, pairIndex, toolId);
     const dropAll = /\[stale\]/i.test(block);
     const dropResult = /\[superseded\]/i.test(block);
     let value = 0.9;
@@ -104,6 +108,11 @@ export async function runCases(
     });
     const actions = Object.fromEntries(result.decisions.map((d) => [d.id, d.action]));
     const agr = agreement(c.gold, actions);
+    process.stderr.write(
+      `${c.id}: ${Object.entries(c.gold)
+        .map(([id, gold]) => `${id} gold=${gold} got=${actions[id] ?? "—"}`)
+        .join("; ")}\n`,
+    );
     hit += agr.hit;
     total += agr.total;
     chars_before += result.stats.chars_before;
@@ -111,7 +120,15 @@ export async function runCases(
     latency_ms += result.stats.latency_ms ?? 0;
     if (result.stats.fail_open) fail_open += 1;
     if (result.stats.model) model = result.stats.model;
-    rows.push({ id: c.id, hit: agr.hit, total: agr.total, fail_open: result.stats.fail_open });
+    rows.push({
+      id: c.id,
+      hit: agr.hit,
+      total: agr.total,
+      fail_open: result.stats.fail_open,
+    });
+    if (result.stats.fail_open && result.stats.fail_reason) {
+      process.stderr.write(`keepdrop eval ${c.id}: ${result.stats.fail_reason}\n`);
+    }
   }
 
   return { live, model, hit, total, chars_before, chars_after, latency_ms, fail_open, rows };
@@ -128,6 +145,7 @@ export function markdownTable(summary: Awaited<ReturnType<typeof runCases>>): st
 }
 
 export async function runEval(casesPath?: string): Promise<void> {
+  loadEnv();
   const path = resolve(casesPath ?? defaultCasesPath());
   const file = JSON.parse(await readFile(path, "utf8")) as EvalFile;
   const live = Boolean(process.env.OPENAI_API_KEY?.trim());

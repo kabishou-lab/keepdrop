@@ -3,8 +3,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { decide } from "./client.js";
 import { compactTranscript } from "./compact.js";
+import { loadEnv } from "./env.js";
 import { keywordJudge } from "./run-eval.js";
 import type { Question, Transcript } from "./types.js";
+
+loadEnv();
 
 function usage(): string {
   return `keepdrop — Jev-compatible System One on the OpenAI-compatible API you already have.

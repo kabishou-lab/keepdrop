@@ -1,4 +1,6 @@
 import { chatJson } from "./openai.js";
+import { loadEnv } from "./env.js";
+import { extractJsonObject } from "./json.js";
 import { assertQuestionMap } from "./questions.js";
 import type {
   Answer,
@@ -28,9 +30,10 @@ export function resolveConfig(opts: DecideOptions = {}): {
   baseUrl: string;
   model: string;
 } {
+  loadEnv();
   const apiKey = opts.apiKey ?? env("OPENAI_API_KEY");
-  const baseUrl = opts.baseUrl ?? env("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
-  const model = opts.model ?? env("OPENAI_MODEL") ?? "gpt-4o-mini";
+  const baseUrl = opts.baseUrl ?? env("OPENAI_BASE_URL") ?? "https://api.minimaxi.com/v1";
+  const model = opts.model ?? env("OPENAI_MODEL") ?? "MiniMax-M3";
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing (OpenAI-compatible key, not TypeSafe)");
   }
@@ -62,10 +65,15 @@ function normalizeDist(dist: Record<string, number>): Record<string, number> {
   return Object.fromEntries(keys.map((key) => [key, dist[key] / sum]));
 }
 
-function stripFences(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
-  return (fenced ? fenced[1] : trimmed).trim();
+function unwrapAnswers(parsed: unknown, ids: string[]): Record<string, unknown> {
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("model did not return a JSON object");
+  }
+  const bag = parsed as Record<string, unknown>;
+  if (ids.every((id) => id in bag)) return bag;
+  const inner = bag.answers;
+  if (inner && typeof inner === "object") return inner as Record<string, unknown>;
+  return bag;
 }
 
 function buildSchema(questions: Record<string, Question>): Record<string, unknown> {
@@ -154,6 +162,11 @@ function renderState(state: unknown): string {
 }
 
 function parseAnswer(id: string, q: Question, raw: unknown): Answer {
+  if (q.type === "noul" && (typeof raw === "number" || typeof raw === "boolean" || typeof raw === "string")) {
+    const n = typeof raw === "boolean" ? (raw ? 1 : 0) : asNumber(raw);
+    if (!Number.isFinite(n)) throw new Error(`${id}: noul is not a number`);
+    return { type: "noul", noul: clamp01(n as number), confidence: 0.5 };
+  }
   if (!raw || typeof raw !== "object") {
     throw new Error(`${id}: missing object`);
   }
@@ -161,8 +174,14 @@ function parseAnswer(id: string, q: Question, raw: unknown): Answer {
   const confidence = clamp01(asNumber(rec.confidence) ?? 0.5);
 
   if (q.type === "noul") {
-    const noul = clamp01(asNumber(rec.noul) ?? Number.NaN);
-    if (!Number.isFinite(asNumber(rec.noul))) throw new Error(`${id}: noul is not a number`);
+    const rawNoul =
+      typeof rec.noul === "boolean"
+        ? rec.noul
+          ? 1
+          : 0
+        : (asNumber(rec.noul) ?? asNumber(rec.probability) ?? asNumber(rec.value));
+    const noul = clamp01(rawNoul ?? Number.NaN);
+    if (!Number.isFinite(rawNoul)) throw new Error(`${id}: noul is not a number`);
     const answer: NoulAnswer = { type: "noul", noul, confidence };
     return answer;
   }
@@ -209,7 +228,7 @@ function parseAnswer(id: string, q: Question, raw: unknown): Answer {
 
 const SYSTEM = `You are a System One decision function, not a chatbot.
 Answer every question about STATE. Return one JSON object and nothing else.
-Never write prose, markdown, or code fences.
+Never write prose, markdown, code fences, or <think> tags.
 noul = probability the statement is true, 0 to 1.
 choice.choice must be one option key; probabilities must cover every option.
 score is a real number on 0..N-1; probabilities[i] is the mass on levels[i].
@@ -235,14 +254,17 @@ export async function decide(
       timeoutMs: opts.timeoutMs,
       fetchImpl: opts.fetchImpl,
     });
-    const parsed = JSON.parse(stripFences(chat.text)) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return { ok: false, error: "model did not return a JSON object", raw: chat.text };
-    }
-    const bag = parsed as Record<string, unknown>;
+    const bag = unwrapAnswers(extractJsonObject(chat.text), ids);
     const answers: Record<string, Answer> = {};
     for (const id of ids) {
-      answers[id] = parseAnswer(id, input.questions[id], bag[id]);
+      const raw = bag[id] ?? bag[id.replace(/-/g, "_")];
+      try {
+        answers[id] = parseAnswer(id, input.questions[id], raw);
+      } catch (err) {
+        const keys = Object.keys(bag).join(",");
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`${msg}; model keys=[${keys}]`);
+      }
     }
     return {
       ok: true,
