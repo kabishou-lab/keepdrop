@@ -2,8 +2,10 @@ export { choice, noul, score } from "./questions.js";
 export { decide, resolveConfig, type DecideOptions } from "./client.js";
 export {
   applyDecisions,
+  chooseAction,
   compactTranscript,
   eligiblePairs,
+  estTokens,
   findToolPairs,
   pinIndices,
   type CompactOptions,

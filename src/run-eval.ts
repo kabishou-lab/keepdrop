@@ -102,7 +102,6 @@ export async function runCases(
   for (const c of file.cases) {
     const result = await compactTranscript(c.transcript, {
       recent: 4,
-      threshold: 0.5,
       truncateChars: 120,
       judge: live ? undefined : keywordJudge,
     });

@@ -24,11 +24,11 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
 
 ```
 keepdrop compact  fixtures/transcript.sample.json
-  eligible 3 · keep 1 · drop 2
-  2268 → 2006 字符 · 7999 ms · fail_open false
+  eligible 3 · keep 1 · drop_result 1 · drop 1
+  2268 → 2129 字符 · 3875 ms · fail_open false
 ```
 
-`keepdrop eval`：9 对工具动作，MiniMax-M3 与金标 **7/9 一致**，fail-open 0。关键字基线 9/9（不是模型）。
+`keepdrop eval`：9 对工具动作，MiniMax-M3 与金标 **9/9**，fail-open 0。关键字基线 9/9（不是模型）。整段 drop 门槛 0.3，截断门槛 0.5，置信度不够则 keep。
 
 账单工单 `decide`：urgent 0.95 / team=billing / severity=blocking，约 3.3 秒。
 

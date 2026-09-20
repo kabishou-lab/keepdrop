@@ -112,6 +112,8 @@ export interface CompactResult {
     drop: number;
     chars_before: number;
     chars_after: number;
+    tokens_before: number;
+    tokens_after: number;
     fail_open: boolean;
     fail_reason?: string;
     model?: string;

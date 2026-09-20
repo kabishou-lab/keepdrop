@@ -13,7 +13,8 @@ function usage(): string {
   return `keepdrop — Jev-compatible System One on the OpenAI-compatible API you already have.
 
 Usage:
-  keepdrop compact <transcript.json> [-o out.json] [--recent N] [--threshold P] [--truncate N] [--markers]
+  keepdrop compact <transcript.json|-> [-o out.json] [--recent N] [--drop-call P] [--drop-result P]
+  keepdrop compact … [--min-confidence P] [--truncate N] [--markers] [--json]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json]
 
@@ -55,9 +56,14 @@ async function loadState(raw: string): Promise<string> {
   }
 }
 
-function printCompact(file: string, result: Awaited<ReturnType<typeof compactTranscript>>): void {
+function printCompact(
+  file: string,
+  result: Awaited<ReturnType<typeof compactTranscript>>,
+  stream: NodeJS.WritableStream = process.stdout,
+): void {
   const s = result.stats;
   const ratio = s.chars_before === 0 ? 1 : s.chars_after / s.chars_before;
+  const tokRatio = s.tokens_before === 0 ? 1 : s.tokens_after / s.tokens_before;
   const lines = [
     `keepdrop compact  ${file}`,
     `  eligible     ${s.eligible}`,
@@ -65,32 +71,61 @@ function printCompact(file: string, result: Awaited<ReturnType<typeof compactTra
     `  drop_result  ${s.drop_result}`,
     `  drop         ${s.drop}`,
     `  chars        ${s.chars_before} → ${s.chars_after}  (${(ratio * 100).toFixed(1)}%)`,
+    `  tokens~      ${s.tokens_before} → ${s.tokens_after}  (${(tokRatio * 100).toFixed(1)}%)`,
     `  fail_open    ${s.fail_open}${s.fail_reason ? `  (${s.fail_reason})` : ""}`,
   ];
   if (s.model) lines.push(`  model        ${s.model}`);
   if (s.latency_ms !== undefined) lines.push(`  latency_ms   ${s.latency_ms}`);
-  process.stdout.write(lines.join("\n") + "\n");
+  if (result.decisions.length) {
+    lines.push("  decisions");
+    for (const d of result.decisions) {
+      const name = (d.name ?? "").padEnd(8);
+      const id = d.id.padEnd(16);
+      lines.push(
+        `    ${id} ${name} ${d.action.padEnd(12)} call=${d.keep_call.toFixed(2)} result=${d.keep_result.toFixed(2)} conf=${Math.min(d.confidence_call, d.confidence_result).toFixed(2)}`,
+      );
+    }
+  }
+  stream.write(lines.join("\n") + "\n");
 }
 
-async function cmdCompact(args: string[]): Promise<void> {
-  const file = args.find((a) => !a.startsWith("-") && a !== "compact");
-  if (!file) throw new Error("compact needs a transcript json path");
-  const transcript = await readJson<Transcript>(resolve(file));
+async function readTranscript(file: string): Promise<Transcript> {
+  const text = file === "-" ? await readStdin() : await readFile(resolve(file), "utf8");
+  const transcript = JSON.parse(text) as Transcript;
   if (!transcript || !Array.isArray(transcript.messages)) {
     throw new Error("transcript must be { messages: Message[], goal?: string }");
   }
+  return transcript;
+}
+
+function readStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    process.stdin.on("data", (c) => chunks.push(Buffer.from(c)));
+    process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    process.stdin.on("error", reject);
+  });
+}
+
+async function cmdCompact(args: string[]): Promise<void> {
+  const file = args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
+  if (!file) throw new Error("compact needs a transcript json path (or - for stdin)");
+  const transcript = await readTranscript(file);
   const markers = flag(args, "--markers");
   if (markers) {
     process.stderr.write("keepdrop: --markers uses fixture tokens [stale]/[superseded], not a model.\n");
   }
   const result = await compactTranscript(transcript, {
     recent: num(args, "--recent", 6),
-    threshold: num(args, "--threshold", 0.5),
+    dropCall: num(args, "--drop-call", 0.3),
+    dropResult: num(args, "--drop-result", 0.5),
+    minConfidence: num(args, "--min-confidence", 0.35),
     truncateChars: num(args, "--truncate", 300),
     judge: markers ? keywordJudge : undefined,
   });
-  printCompact(file, result);
   const out = arg(args, "-o") ?? arg(args, "--out");
+  const asJson = flag(args, "--json");
+  printCompact(file, result, asJson && !out ? process.stderr : process.stdout);
   const payload = {
     messages: result.messages,
     decisions: result.decisions,
@@ -98,7 +133,7 @@ async function cmdCompact(args: string[]): Promise<void> {
   };
   if (out) {
     await writeFile(resolve(out), JSON.stringify(payload, null, 2) + "\n", "utf8");
-  } else if (flag(args, "--json")) {
+  } else if (asJson) {
     process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
   }
 }

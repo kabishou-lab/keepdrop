@@ -21,7 +21,14 @@ export interface ToolPair {
 
 export interface CompactOptions extends DecideOptions {
   recent?: number;
+  /** Alias for both drop thresholds (tests). Prefer dropCall / dropResult. */
   threshold?: number;
+  /** Full-drop if keep_call is below this and confidence is high enough. Default 0.3. */
+  dropCall?: number;
+  /** Truncate result if keep_result is below this. Default 0.5. */
+  dropResult?: number;
+  /** Uncertain answers stay keep. Default 0.35. */
+  minConfidence?: number;
   truncateChars?: number;
   judge?: (state: string, questions: Record<string, Question>) => Promise<DecideResult>;
 }
@@ -31,6 +38,24 @@ export const TRUNCATED_MARK = "\n…[keepdrop truncated]";
 
 export function messageChars(messages: Message[]): number {
   return JSON.stringify(messages).length;
+}
+
+export function estTokens(chars: number): number {
+  return Math.round(chars / 4);
+}
+
+export function chooseAction(
+  keepCall: number,
+  keepResult: number,
+  confidenceCall: number,
+  confidenceResult: number,
+  opts: { dropCall: number; dropResult: number; minConfidence: number },
+): PairAction {
+  if (keepCall < opts.dropCall && confidenceCall >= opts.minConfidence) return "drop";
+  if (keepResult < opts.dropResult && confidenceResult >= opts.minConfidence) {
+    return "drop_result";
+  }
+  return "keep";
 }
 
 export function pinIndices(length: number, recent: number): Set<number> {
@@ -110,6 +135,8 @@ function buildState(transcript: Transcript, pairs: ToolPair[], truncateChars: nu
     "Drop exploratory listings/searches once a later read or edit already found the real file.",
     "Drop test/log RESULTS from before a later successful run; the call itself may still be kept.",
     "Keep reads of source that is still the subject of the goal.",
+    "Keep source-file reads (read/cat of .ts/.js/.py/.go/.rs/.json) verbatim unless [stale] or [superseded].",
+    "Prefer drop_result over drop when the call still documents that a step happened.",
     "If a pair contains the token [stale], keep_call and keep_result should be near 0.",
     "If a pair contains [superseded], keep_result should be near 0 (keep_call may stay high).",
     'Reply with one JSON object keyed by call0, result0, call1, result1, … each value {"type":"noul","noul":0-1,"confidence":0-1}.',
@@ -155,7 +182,9 @@ export async function compactTranscript(
   opts: CompactOptions = {},
 ): Promise<CompactResult> {
   const recent = opts.recent ?? 6;
-  const threshold = opts.threshold ?? 0.5;
+  const dropCall = opts.dropCall ?? opts.threshold ?? 0.3;
+  const dropResult = opts.dropResult ?? opts.threshold ?? 0.5;
+  const minConfidence = opts.minConfidence ?? 0.35;
   const truncateChars = opts.truncateChars ?? 300;
   const before = messageChars(transcript.messages);
   const pairs = eligiblePairs(transcript.messages, recent);
@@ -170,6 +199,8 @@ export async function compactTranscript(
       drop: 0,
       chars_before: before,
       chars_after: before,
+      tokens_before: estTokens(before),
+      tokens_after: estTokens(before),
       fail_open: true,
       ...extra,
     },
@@ -186,6 +217,8 @@ export async function compactTranscript(
         drop: 0,
         chars_before: before,
         chars_after: before,
+        tokens_before: estTokens(before),
+        tokens_after: estTokens(before),
         fail_open: false,
       },
     };
@@ -229,9 +262,11 @@ export async function compactTranscript(
     if (!callAns || callAns.type !== "noul" || !resultAns || resultAns.type !== "noul") {
       return empty({ fail_reason: "judge returned an unexpected shape", model: judged.model });
     }
-    let action: PairAction = "keep";
-    if (callAns.noul < threshold) action = "drop";
-    else if (resultAns.noul < threshold) action = "drop_result";
+    const action = chooseAction(callAns.noul, resultAns.noul, callAns.confidence, resultAns.confidence, {
+      dropCall,
+      dropResult,
+      minConfidence,
+    });
     decisions.push({
       id: item.pair.id,
       name: item.pair.name,
@@ -259,6 +294,8 @@ export async function compactTranscript(
       drop,
       chars_before: before,
       chars_after: messageChars(messages),
+      tokens_before: estTokens(before),
+      tokens_after: estTokens(messageChars(messages)),
       fail_open: false,
       model: judged.model,
       latency_ms: judged.usage.latency_ms,

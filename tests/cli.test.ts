@@ -4,12 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-function run(args: string[], env: NodeJS.ProcessEnv = {}): Promise<{ code: number; out: string; err: string }> {
+function run(
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+  stdin?: string,
+): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve) => {
     const child = spawn("npx", ["tsx", "src/cli.ts", ...args], {
       cwd: process.cwd(),
       env: { ...process.env, ...env },
     });
+    if (stdin !== undefined) {
+      child.stdin.write(stdin);
+      child.stdin.end();
+    }
     let out = "";
     let err = "";
     child.stdout.on("data", (d) => {
@@ -56,6 +64,19 @@ describe("cli", () => {
     expect(err).toMatch(/not a model/i);
     expect(out).toMatch(/fail_open    false/);
     expect(out).toMatch(/drop/);
+  });
+
+  it("reads a transcript from stdin", async () => {
+    const raw = await readFile("fixtures/transcript.sample.json", "utf8");
+    const { code, out, err } = await run(
+      ["compact", "-", "--markers", "--recent", "6"],
+      { OPENAI_API_KEY: "" },
+      raw,
+    );
+    expect(code).toBe(0);
+    expect(out + err).toMatch(/fail_open    false/);
+    expect(out).toMatch(/tokens~/);
+    expect(out).toMatch(/decisions/);
   });
 
   it("runs offline eval against gold labels", async () => {

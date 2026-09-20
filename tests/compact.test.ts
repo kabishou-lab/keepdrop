@@ -5,6 +5,7 @@ import {
   DROPPED_MARK,
   TRUNCATED_MARK,
   applyDecisions,
+  chooseAction,
   compactTranscript,
   eligiblePairs,
   findToolPairs,
@@ -53,6 +54,23 @@ describe("pin + pairs", () => {
   it("does not judge pairs that sit in the recent window", () => {
     const eligible = eligiblePairs(sample().messages, 3);
     expect(eligible.map((p) => p.id)).toEqual(["c1", "c2"]);
+  });
+});
+
+describe("chooseAction", () => {
+  const policy = { dropCall: 0.3, dropResult: 0.5, minConfidence: 0.35 };
+
+  it("full-drops only when the call is clearly useless", () => {
+    expect(chooseAction(0.1, 0.1, 0.7, 0.7, policy)).toBe("drop");
+    expect(chooseAction(0.4, 0.1, 0.7, 0.7, policy)).toBe("drop_result");
+  });
+
+  it("keeps when confidence is below the floor", () => {
+    expect(chooseAction(0.05, 0.05, 0.2, 0.2, policy)).toBe("keep");
+  });
+
+  it("keeps a source-read that is still useful", () => {
+    expect(chooseAction(0.88, 0.82, 0.6, 0.6, policy)).toBe("keep");
   });
 });
 
@@ -199,7 +217,6 @@ describe("eval fixtures + keyword judge", () => {
     for (const c of file.cases) {
       const result = await compactTranscript(c.transcript, {
         recent: 4,
-        threshold: 0.5,
         judge: keywordJudge,
       });
       const actions = Object.fromEntries(result.decisions.map((d) => [d.id, d.action]));

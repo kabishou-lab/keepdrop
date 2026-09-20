@@ -18,6 +18,8 @@ cp .env.example .env   # then put your key in .env (never commit it)
 # OPENAI_MODEL=MiniMax-M3
 
 npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
+# agents can pipe:
+#   cat session.json | npx tsx src/cli.ts compact - --json
 ```
 
 Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
@@ -37,19 +39,26 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json --markers
 
 Nothing is summarized. Nothing is paraphrased.
 
-Captured 2026-09-20 against **MiniMax-M3** (`https://api.minimaxi.com/v1`):
+Captured 2026-09-20 against **MiniMax-M3** (`https://api.minimaxi.com/v1`), after the keep/drop policy pass:
 
 ```
 keepdrop compact  fixtures/transcript.sample.json
   eligible     3
   keep         1
-  drop_result  0
-  drop         2
-  chars        2268 → 2006  (88.4%)
+  drop_result  1
+  drop         1
+  chars        2268 → 2129  (93.9%)
+  tokens~      567 → 532  (93.8%)
   fail_open    false
   model        MiniMax-M3
-  latency_ms   7999
+  latency_ms   3875
+  decisions
+    call_search_1    grep     drop         call=0.05 result=0.02
+    call_read_1      read     keep         call=0.92 result=0.90
+    call_test_1      bash     drop_result  call=0.40 result=0.03
 ```
+
+Full drop requires `keep_call < 0.3` and enough confidence. Truncate uses `keep_result < 0.5`. Uncertain answers stay `keep`.
 
 `decide` on a billing ticket, same backend (not Jev):
 
@@ -94,9 +103,7 @@ npx tsx src/cli.ts eval
 | backend | pair-action agreement | chars after/before | fail-open cases | latency |
 |---|---:|---:|---:|---:|
 | keyword-baseline (not a model) | 100.0% (9/9) | 98.5% | 0 | 0 ms |
-| MiniMax-M3 (2026-09-20, this repo) | 77.8% (7/9) | 97.4% | 0 | 37852 ms |
-
-The 2 disagreements: MiniMax truncated one source-read it could have kept, and dropped one old curl instead of only dropping its result. Fail-open stayed at 0.
+| MiniMax-M3 (2026-09-20, this repo) | **100.0% (9/9)** | 98.5% | 0 | 20741 ms |
 
 Still **not Jev**. MiniMax is an ordinary chat model with `reasoning_split`; keepdrop strips `<think>` and reads `reasoning_content`.
 
