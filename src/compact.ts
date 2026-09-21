@@ -39,6 +39,8 @@ export interface CompactOptions extends DecideOptions {
   onChunk?: (done: number, total: number) => void;
   /** Reuse judgments for unchanged tool pairs (watch / second pass). */
   cache?: Map<string, CachedJudgment>;
+  /** Max uncached pairs to send to the judge this call. Rest stay pending. */
+  maxNew?: number;
 }
 
 export interface CachedJudgment {
@@ -310,7 +312,7 @@ export async function compactTranscript(
   const pairChunk = Math.max(1, opts.pairChunk ?? 4);
   const cache = opts.cache;
   const cachedDecisions: PairDecision[] = [];
-  const need: typeof map = [];
+  const uncached: typeof map = [];
   for (const item of map) {
     const hit = cache?.get(pairCacheKey(item.pair));
     if (hit) {
@@ -322,9 +324,12 @@ export async function compactTranscript(
         result_message_index: item.pair.resultMessageIndex,
       });
     } else {
-      need.push(item);
+      uncached.push(item);
     }
   }
+  const maxNew = opts.maxNew && opts.maxNew > 0 ? opts.maxNew : uncached.length;
+  const need = uncached.slice(0, maxNew);
+  const pending = uncached.length - need.length;
 
   const merged: Record<string, Answer> = {};
   let input_tokens = 0;
@@ -399,6 +404,7 @@ export async function compactTranscript(
       eligible: pairs.length,
       skipped_sealed,
       skipped_cached: cachedDecisions.length,
+      pending,
       keep,
       drop_result,
       drop,

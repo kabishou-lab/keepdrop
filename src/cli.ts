@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
 import { compactTranscript, eligiblePairs, type CachedJudgment } from "./compact.js";
+import { loadCacheFile, saveCacheFile } from "./cache-file.js";
 import { atomicWrite } from "./fsx.js";
 import { watchFile, type WatchHandle } from "./watch.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
@@ -27,7 +28,7 @@ Usage:
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json] [--long]
-  keepdrop compact … [--watch] [--in-place] [-o out.json] [--quiet]
+  keepdrop compact … [--watch] [--in-place] [--cache-file f] [--max-new N] [--quiet]
 
 Env: OPENAI_API_KEY  OPENAI_BASE_URL  OPENAI_MODEL
 
@@ -80,6 +81,7 @@ function printCompact(
     `  eligible     ${s.eligible}`,
     ...(s.skipped_sealed ? [`  skipped      ${s.skipped_sealed} already compacted`] : []),
     ...(s.skipped_cached ? [`  cached       ${s.skipped_cached} unchanged pairs`] : []),
+    ...(s.pending ? [`  pending      ${s.pending} (over --max-new)`] : []),
     `  keep         ${s.keep}`,
     `  drop_result  ${s.drop_result}`,
     `  drop         ${s.drop}`,
@@ -155,7 +157,14 @@ async function cmdCompact(args: string[]): Promise<void> {
       : undefined;
   let backedUp = false;
   let watcher: WatchHandle | undefined;
+  const cacheFile =
+    arg(args, "--cache-file") ??
+    (watching ? `${file}.keepdrop-cache.json` : undefined);
   const cache = new Map<string, CachedJudgment>();
+  if (cacheFile) {
+    const loaded = await loadCacheFile(resolve(cacheFile));
+    for (const [k, v] of loaded) cache.set(k, v);
+  }
 
   const runOnce = async () => {
     const transcript = await readTranscript(file);
@@ -180,6 +189,7 @@ async function cmdCompact(args: string[]): Promise<void> {
       minConfidence: num(args, "--min-confidence", 0.35),
       truncateChars: num(args, "--truncate", 300),
       pairChunk: num(args, "--pair-chunk", 4),
+      maxNew: arg(args, "--max-new") ? num(args, "--max-new", 0) : undefined,
       judge: markers ? keywordJudge : undefined,
       cache,
       onChunk: (done, total) => {
@@ -219,6 +229,7 @@ async function cmdCompact(args: string[]): Promise<void> {
     } else if (asJson || jsonl) {
       process.stdout.write(body);
     }
+    if (cacheFile) await saveCacheFile(resolve(cacheFile), cache);
     if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
   };
 

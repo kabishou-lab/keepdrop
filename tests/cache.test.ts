@@ -56,4 +56,16 @@ describe("judgment cache", () => {
     expect(second.stats.skipped_cached).toBe(first.stats.eligible);
     expect(second.stats.input_tokens).toBe(0);
   });
+
+  it("honors maxNew and leaves the rest pending", async () => {
+    let calls = 0;
+    const judge = async (): Promise<DecideResult> => {
+      calls += 1;
+      return keepAll();
+    };
+    const first = await compactTranscript(sample(), { recent: 2, maxNew: 1, pairChunk: 1, judge });
+    expect(first.stats.pending).toBeGreaterThan(0);
+    expect(first.stats.keep + first.stats.drop + first.stats.drop_result).toBe(1);
+    expect(calls).toBe(1);
+  });
 });

@@ -109,6 +109,7 @@ export interface CompactResult {
     eligible: number;
     skipped_sealed?: number;
     skipped_cached?: number;
+    pending?: number;
     keep: number;
     drop_result: number;
     drop: number;
