@@ -14,6 +14,7 @@ export {
   type CompactOptions,
 } from "./compact.js";
 export { parseTranscriptText } from "./ingest.js";
+export { watchFile } from "./watch.js";
 export type {
   Answer,
   ChoiceAnswer,

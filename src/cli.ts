@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
 import { compactTranscript, eligiblePairs } from "./compact.js";
+import { watchFile } from "./watch.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
 import { loadEnv } from "./env.js";
 import { parseTranscriptText } from "./ingest.js";
@@ -21,7 +22,8 @@ Usage:
   keepdrop compact … [--dry-run] [--strict] [--markers] [--json]
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
-  keepdrop eval    [cases.json]
+  keepdrop eval    [cases.json] [--long]
+  keepdrop compact … [--watch] [-o out.json] [--quiet]
 
 Env: OPENAI_API_KEY  OPENAI_BASE_URL  OPENAI_MODEL
 
@@ -131,47 +133,80 @@ async function cmdCompact(args: string[]): Promise<void> {
     ? resolve(packageRoot(), "fixtures/transcript.long.json")
     : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
   if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
-  const transcript = await readTranscript(file);
-  const recent = num(args, "--recent", 6);
-  if (flag(args, "--dry-run")) {
-    const pairs = eligiblePairs(transcript.messages, recent);
-    process.stdout.write(
-      `keepdrop dry-run  ${file}\n  messages     ${transcript.messages.length}\n  eligible     ${pairs.length}\n` +
-        pairs.map((p, i) => `    ${String(i).padStart(2)} ${p.name.padEnd(8)} ${p.id}  ${p.resultContent.length} chars`).join("\n") +
-        (pairs.length ? "\n" : ""),
-    );
-    return;
-  }
-  const markers = flag(args, "--markers");
-  if (markers) {
-    process.stderr.write("keepdrop: --markers uses fixture tokens [stale]/[superseded], not a model.\n");
-  }
-  const result = await compactTranscript(transcript, {
-    recent,
-    dropCall: num(args, "--drop-call", 0.3),
-    dropResult: num(args, "--drop-result", 0.5),
-    minConfidence: num(args, "--min-confidence", 0.35),
-    truncateChars: num(args, "--truncate", 300),
-    pairChunk: num(args, "--pair-chunk", 4),
-    judge: markers ? keywordJudge : undefined,
-    onChunk: (done, total) => {
-      if (total > 1) process.stderr.write(`keepdrop: judging chunk ${done}/${total}\n`);
+  const watching = flag(args, "--watch");
+  if (watching && file === "-") throw new Error("--watch cannot read stdin");
+  const outDefault = watching && !arg(args, "-o") && !arg(args, "--out") ? `${file}.keepdrop.json` : undefined;
+
+  const runOnce = async () => {
+    const transcript = await readTranscript(file);
+    const recent = num(args, "--recent", 6);
+    if (flag(args, "--dry-run")) {
+      const pairs = eligiblePairs(transcript.messages, recent);
+      process.stdout.write(
+        `keepdrop dry-run  ${file}\n  messages     ${transcript.messages.length}\n  eligible     ${pairs.length}\n` +
+          pairs.map((p, i) => `    ${String(i).padStart(2)} ${p.name.padEnd(8)} ${p.id}  ${p.resultContent.length} chars`).join("\n") +
+          (pairs.length ? "\n" : ""),
+      );
+      return;
+    }
+    const markers = flag(args, "--markers");
+    if (markers && !watching) {
+      process.stderr.write("keepdrop: --markers uses fixture tokens [stale]/[superseded], not a model.\n");
+    }
+    const result = await compactTranscript(transcript, {
+      recent,
+      dropCall: num(args, "--drop-call", 0.3),
+      dropResult: num(args, "--drop-result", 0.5),
+      minConfidence: num(args, "--min-confidence", 0.35),
+      truncateChars: num(args, "--truncate", 300),
+      pairChunk: num(args, "--pair-chunk", 4),
+      judge: markers ? keywordJudge : undefined,
+      onChunk: (done, total) => {
+        if (total > 1 && !flag(args, "--quiet")) {
+          process.stderr.write(`keepdrop: judging chunk ${done}/${total}\n`);
+        }
+      },
+    });
+    const out = arg(args, "-o") ?? arg(args, "--out") ?? outDefault;
+    const asJson = flag(args, "--json");
+    const quiet = flag(args, "--quiet");
+    if (!quiet) printCompact(file, result, asJson && !out ? process.stderr : process.stdout);
+    else if (result.stats.eligible > 0 || result.stats.fail_open) {
+      process.stderr.write(
+        `keepdrop ${result.stats.fail_open ? "fail-open" : "ok"}  eligible=${result.stats.eligible}  ${result.stats.chars_before}→${result.stats.chars_after}\n`,
+      );
+    }
+    const payload = {
+      messages: result.messages,
+      decisions: result.decisions,
+      stats: result.stats,
+    };
+    if (out) {
+      await writeFile(resolve(out), JSON.stringify(payload, null, 2) + "\n", "utf8");
+    } else if (asJson) {
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+    }
+    if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
+  };
+
+  await runOnce();
+  if (!watching) return;
+  process.stderr.write(`keepdrop: watching ${file}  (Ctrl-C to stop)\n`);
+  const handle = watchFile(resolve(file === "-" ? process.cwd() : file), runOnce, {
+    debounceMs: 250,
+    pollMs: 400,
+    onError: (err) => {
+      process.stderr.write(`keepdrop watch: ${err instanceof Error ? err.message : String(err)}\n`);
     },
   });
-  const out = arg(args, "-o") ?? arg(args, "--out");
-  const asJson = flag(args, "--json");
-  printCompact(file, result, asJson && !out ? process.stderr : process.stdout);
-  const payload = {
-    messages: result.messages,
-    decisions: result.decisions,
-    stats: result.stats,
-  };
-  if (out) {
-    await writeFile(resolve(out), JSON.stringify(payload, null, 2) + "\n", "utf8");
-  } else if (asJson) {
-    process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
-  }
-  if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
+  await new Promise<void>((resolveWait) => {
+    const stop = () => {
+      handle.close();
+      resolveWait();
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+  });
 }
 
 async function cmdDecide(args: string[]): Promise<void> {
@@ -219,7 +254,9 @@ async function main(): Promise<void> {
   }
   if (cmd === "eval") {
     const { runEval } = await import("./run-eval.js");
-    await runEval(args[1]);
+    const long = flag(args, "--long");
+    const path = args.find((a) => a !== "eval" && !a.startsWith("-"));
+    await runEval(path, { long });
     return;
   }
   throw new Error(`unknown command ${cmd}\n${usage()}`);

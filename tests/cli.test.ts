@@ -95,6 +95,13 @@ describe("cli", () => {
     expect(out).toMatch(/decisions/);
   });
 
+  it("evals the long fixture against marker gold", async () => {
+    const { code, out, err } = await run(["eval", "--long"], { OPENAI_API_KEY: "" });
+    expect(code).toBe(0);
+    expect(err).toMatch(/keyword baseline/i);
+    expect(out).toMatch(/100\.0% \(15\/15\)/);
+  });
+
   it("runs offline eval against gold labels", async () => {
     const { code, out, err } = await run(["eval"], { OPENAI_API_KEY: "" });
     expect(code).toBe(0);

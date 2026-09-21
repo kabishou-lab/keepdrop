@@ -1,0 +1,20 @@
+{
+  "id": "health-404",
+  "gold": {
+    "ls_root": "drop",
+    "find_js": "drop",
+    "grep_express": "drop",
+    "npm_outdated": "drop",
+    "cat_readme": "drop",
+    "grep_health_old": "drop",
+    "grep_router": "keep",
+    "read_router": "keep",
+    "read_server": "keep",
+    "read_index": "keep",
+    "test_1": "drop_result",
+    "edit_1": "keep",
+    "test_2": "drop_result",
+    "read_test": "keep",
+    "edit_test": "keep"
+  }
+}

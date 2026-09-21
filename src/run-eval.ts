@@ -79,6 +79,7 @@ export async function keywordJudge(
 export async function runCases(
   file: EvalFile,
   live: boolean,
+  opts: { recent?: number } = {},
 ): Promise<{
   live: boolean;
   model: string;
@@ -101,7 +102,7 @@ export async function runCases(
 
   for (const c of file.cases) {
     const result = await compactTranscript(c.transcript, {
-      recent: 4,
+      recent: opts.recent ?? 4,
       truncateChars: 120,
       judge: live ? undefined : keywordJudge,
     });
@@ -143,17 +144,29 @@ export function markdownTable(summary: Awaited<ReturnType<typeof runCases>>): st
   ].join("\n");
 }
 
-export async function runEval(casesPath?: string): Promise<void> {
+export async function loadLongEvalFile(): Promise<EvalFile> {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const transcript = JSON.parse(
+    await readFile(resolve(here, "../fixtures/transcript.long.json"), "utf8"),
+  ) as Transcript;
+  const meta = JSON.parse(
+    await readFile(resolve(here, "../fixtures/eval/long-gold.json"), "utf8"),
+  ) as { id: string; gold: EvalCase["gold"] };
+  return { cases: [{ id: meta.id, gold: meta.gold, transcript }] };
+}
+
+export async function runEval(casesPath?: string, opts: { long?: boolean } = {}): Promise<void> {
   loadEnv();
-  const path = resolve(casesPath ?? defaultCasesPath());
-  const file = JSON.parse(await readFile(path, "utf8")) as EvalFile;
+  const file = opts.long
+    ? await loadLongEvalFile()
+    : (JSON.parse(await readFile(resolve(casesPath ?? defaultCasesPath()), "utf8")) as EvalFile);
   const live = Boolean(process.env.OPENAI_API_KEY?.trim());
   if (!live) {
     process.stderr.write(
       "OPENAI_API_KEY unset — running keyword baseline. This is not Jev and not an LLM.\n",
     );
   }
-  const summary = await runCases(file, live);
+  const summary = await runCases(file, live, { recent: opts.long ? 6 : 4 });
   process.stdout.write(markdownTable(summary) + "\n");
   process.stdout.write(
     "Note: backend is an ordinary OpenAI-compatible chat model (or a keyword baseline). Not Jev. Not RLCD-calibrated.\n",
