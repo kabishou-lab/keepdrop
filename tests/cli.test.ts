@@ -31,6 +31,14 @@ function run(
 }
 
 describe("cli", () => {
+  it("dry-runs eligible pairs without a key", async () => {
+    const { code, out } = await run(["compact", "--demo", "--dry-run"], { OPENAI_API_KEY: "" });
+    expect(code).toBe(0);
+    expect(out).toMatch(/dry-run/);
+    expect(out).toMatch(/eligible\s+15/);
+    expect(out).toMatch(/ls_root/);
+  });
+
   it("prints help", async () => {
     const { code, out } = await run(["--help"]);
     expect(code).toBe(0);

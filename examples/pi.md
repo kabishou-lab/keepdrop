@@ -18,3 +18,5 @@ jq -f examples/from-openai-messages.jq session.json \
 keepdrop only judges **complete** `assistant.tool_calls` + matching `tool` results. User text and the latest few messages stay pinned.
 
 Pi-specific session files (tree branches, thinking blocks) are **not** parsed here. Flatten to `messages[]` first. Do not pipe medical or employer transcripts into public fixtures.
+
+Claude Code JSONL (tool_use / tool_result) can be passed straight to `keepdrop compact session.jsonl`. `parseTranscriptText` accepts keepdrop JSON, a message array, or JSONL.

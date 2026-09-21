@@ -208,6 +208,48 @@ describe("compactTranscript", () => {
   });
 });
 
+describe("sealed pairs", () => {
+  it("does not re-judge pairs already dropped", async () => {
+    const first = await compactTranscript(sample(), {
+      recent: 3,
+      judge: async () => ({
+        ok: true,
+        model: "fake",
+        raw: "{}",
+        usage: {
+          input_tokens: 1,
+          output_tokens: 1,
+          latency_ms: 1,
+          n_retries: 0,
+          response_format: "prompt",
+        },
+        answers: {
+          call0: { type: "noul", noul: 0.01, confidence: 1 },
+          result0: { type: "noul", noul: 0.01, confidence: 1 },
+          call1: { type: "noul", noul: 0.01, confidence: 1 },
+          result1: { type: "noul", noul: 0.01, confidence: 1 },
+        },
+      }),
+    });
+    expect(first.stats.eligible).toBe(2);
+    let judged = 0;
+    const second = await compactTranscript(
+      { messages: first.messages },
+      {
+        recent: 3,
+        judge: async () => {
+          judged += 1;
+          return { ok: false, error: "should not run" };
+        },
+      },
+    );
+    expect(judged).toBe(0);
+    expect(second.stats.eligible).toBe(0);
+    expect(second.stats.skipped_sealed).toBe(2);
+    expect(second.stats.fail_open).toBe(false);
+  });
+});
+
 describe("eval fixtures + keyword judge", () => {
   it("keyword baseline matches gold on bundled cases", async () => {
     const raw = await readFile(resolve("fixtures/eval/cases.json"), "utf8");

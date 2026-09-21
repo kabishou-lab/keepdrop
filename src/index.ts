@@ -8,9 +8,12 @@ export {
   eligiblePairs,
   estTokens,
   findToolPairs,
+  isSealedPair,
   pinIndices,
+  sealedPairCount,
   type CompactOptions,
 } from "./compact.js";
+export { parseTranscriptText } from "./ingest.js";
 export type {
   Answer,
   ChoiceAnswer,

@@ -23,7 +23,7 @@ cp .env.example .env   # OPENAI_API_KEY + MiniMax-M3 defaults
 npx tsx src/cli.ts compact --demo
 ```
 
-`npm publish` is not done yet (`npm whoami` needs your login). Until then use the GitHub npx URL.
+`--dry-run` lists eligible pairs with no API call. `--strict` exits 2 on fail-open. Already-compacted pairs are skipped (idempotent). Claude Code JSONL works as input.
 
 Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
 

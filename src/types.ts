@@ -107,6 +107,7 @@ export interface CompactResult {
   decisions: PairDecision[];
   stats: {
     eligible: number;
+    skipped_sealed?: number;
     keep: number;
     drop_result: number;
     drop: number;

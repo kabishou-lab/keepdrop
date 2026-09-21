@@ -31,10 +31,11 @@ export interface CompactOptions extends DecideOptions {
   dropResult?: number;
   /** Uncertain answers stay keep. Default 0.35. */
   minConfidence?: number;
-  /** Pairs per judge request. Default 8. Long transcripts are split. */
+  /** Pairs per judge request. Default 4. Long transcripts are split. */
   pairChunk?: number;
   truncateChars?: number;
   judge?: (state: string, questions: Record<string, Question>) => Promise<DecideResult>;
+  onChunk?: (done: number, total: number) => void;
 }
 
 export const DROPPED_MARK = "[keepdrop dropped]";
@@ -104,11 +105,32 @@ export function findToolPairs(messages: Message[]): ToolPair[] {
   return pairs;
 }
 
+export function isSealedPair(pair: ToolPair): boolean {
+  return (
+    pair.arguments.includes(DROPPED_MARK) ||
+    pair.resultContent.includes(DROPPED_MARK) ||
+    pair.resultContent.includes(TRUNCATED_MARK)
+  );
+}
+
 export function eligiblePairs(messages: Message[], recent: number): ToolPair[] {
   const pinned = pinIndices(messages.length, recent);
   return findToolPairs(messages).filter(
-    (pair) => !pinned.has(pair.callMessageIndex) && !pinned.has(pair.resultMessageIndex),
+    (pair) =>
+      !pinned.has(pair.callMessageIndex) &&
+      !pinned.has(pair.resultMessageIndex) &&
+      !isSealedPair(pair),
   );
+}
+
+export function sealedPairCount(messages: Message[], recent: number): number {
+  const pinned = pinIndices(messages.length, recent);
+  return findToolPairs(messages).filter(
+    (pair) =>
+      !pinned.has(pair.callMessageIndex) &&
+      !pinned.has(pair.resultMessageIndex) &&
+      isSealedPair(pair),
+  ).length;
 }
 
 function truncate(text: string, chars: number): string {
@@ -204,12 +226,14 @@ export async function compactTranscript(
   const truncateChars = opts.truncateChars ?? 300;
   const before = messageChars(transcript.messages);
   const pairs = eligiblePairs(transcript.messages, recent);
+  const skipped_sealed = sealedPairCount(transcript.messages, recent);
 
   const empty = (extra: Partial<CompactResult["stats"]> = {}): CompactResult => ({
     messages: transcript.messages,
     decisions: [],
     stats: {
       eligible: pairs.length,
+      skipped_sealed,
       keep: 0,
       drop_result: 0,
       drop: 0,
@@ -228,6 +252,7 @@ export async function compactTranscript(
       decisions: [],
       stats: {
         eligible: 0,
+        skipped_sealed,
         keep: 0,
         drop_result: 0,
         drop: 0,
@@ -275,6 +300,7 @@ export async function compactTranscript(
     for (let start = 0; start < map.length; start += pairChunk) {
       const slice = map.slice(start, start + pairChunk);
       const qs = Object.assign({}, ...slice.map(questionFor));
+      opts.onChunk?.(Math.floor(start / pairChunk) + 1, Math.ceil(map.length / pairChunk));
       const judged = await judge(buildState(transcript, slice, truncateChars), qs);
       if (!judged.ok) {
         return empty({ fail_reason: judged.error });
@@ -328,6 +354,7 @@ export async function compactTranscript(
     decisions,
     stats: {
       eligible: pairs.length,
+      skipped_sealed,
       keep,
       drop_result,
       drop,

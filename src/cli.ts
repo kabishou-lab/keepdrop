@@ -3,9 +3,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
-import { compactTranscript } from "./compact.js";
+import { compactTranscript, eligiblePairs } from "./compact.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
 import { loadEnv } from "./env.js";
+import { parseTranscriptText } from "./ingest.js";
 import { keywordJudge } from "./run-eval.js";
 import type { Question, Transcript } from "./types.js";
 
@@ -17,7 +18,8 @@ function usage(): string {
 Usage:
   keepdrop compact <transcript.json|-> [-o out.json] [--recent N] [--drop-call P] [--drop-result P]
   keepdrop compact --demo [--markers]     bundled long coding-agent log
-  keepdrop compact … [--min-confidence P] [--truncate N] [--markers] [--json]
+  keepdrop compact … [--dry-run] [--strict] [--markers] [--json]
+  keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json]
 
@@ -70,6 +72,7 @@ function printCompact(
   const lines = [
     `keepdrop compact  ${file}`,
     `  eligible     ${s.eligible}`,
+    ...(s.skipped_sealed ? [`  skipped      ${s.skipped_sealed} already compacted`] : []),
     `  keep         ${s.keep}`,
     `  drop_result  ${s.drop_result}`,
     `  drop         ${s.drop}`,
@@ -106,11 +109,7 @@ function printCompact(
 
 async function readTranscript(file: string): Promise<Transcript> {
   const text = file === "-" ? await readStdin() : await readFile(resolve(file), "utf8");
-  const transcript = JSON.parse(text) as Transcript;
-  if (!transcript || !Array.isArray(transcript.messages)) {
-    throw new Error("transcript must be { messages: Message[], goal?: string }");
-  }
-  return transcript;
+  return parseTranscriptText(text);
 }
 
 function readStdin(): Promise<string> {
@@ -133,18 +132,31 @@ async function cmdCompact(args: string[]): Promise<void> {
     : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
   if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
   const transcript = await readTranscript(file);
+  const recent = num(args, "--recent", 6);
+  if (flag(args, "--dry-run")) {
+    const pairs = eligiblePairs(transcript.messages, recent);
+    process.stdout.write(
+      `keepdrop dry-run  ${file}\n  messages     ${transcript.messages.length}\n  eligible     ${pairs.length}\n` +
+        pairs.map((p, i) => `    ${String(i).padStart(2)} ${p.name.padEnd(8)} ${p.id}  ${p.resultContent.length} chars`).join("\n") +
+        (pairs.length ? "\n" : ""),
+    );
+    return;
+  }
   const markers = flag(args, "--markers");
   if (markers) {
     process.stderr.write("keepdrop: --markers uses fixture tokens [stale]/[superseded], not a model.\n");
   }
   const result = await compactTranscript(transcript, {
-    recent: num(args, "--recent", 6),
+    recent,
     dropCall: num(args, "--drop-call", 0.3),
     dropResult: num(args, "--drop-result", 0.5),
     minConfidence: num(args, "--min-confidence", 0.35),
     truncateChars: num(args, "--truncate", 300),
     pairChunk: num(args, "--pair-chunk", 4),
     judge: markers ? keywordJudge : undefined,
+    onChunk: (done, total) => {
+      if (total > 1) process.stderr.write(`keepdrop: judging chunk ${done}/${total}\n`);
+    },
   });
   const out = arg(args, "-o") ?? arg(args, "--out");
   const asJson = flag(args, "--json");
@@ -159,6 +171,7 @@ async function cmdCompact(args: string[]): Promise<void> {
   } else if (asJson) {
     process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
   }
+  if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
 }
 
 async function cmdDecide(args: string[]): Promise<void> {
