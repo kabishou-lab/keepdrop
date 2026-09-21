@@ -3,6 +3,7 @@ export { decide, resolveConfig, type DecideOptions } from "./client.js";
 export { formatUsd, pricePerMtok, usdJudge, usdSaved } from "./cost.js";
 export {
   applyDecisions,
+  charsSavedByAction,
   chooseAction,
   compactTranscript,
   pairCacheKey,

@@ -100,6 +100,7 @@ export interface PairDecision {
   confidence_result: number;
   call_message_index: number;
   result_message_index: number;
+  chars_saved?: number;
 }
 
 export interface CompactResult {
@@ -113,6 +114,7 @@ export interface CompactResult {
     keep: number;
     drop_result: number;
     drop: number;
+    chars_saved?: number;
     chars_before: number;
     chars_after: number;
     tokens_before: number;

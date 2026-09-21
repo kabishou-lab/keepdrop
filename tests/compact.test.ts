@@ -5,6 +5,7 @@ import {
   DROPPED_MARK,
   TRUNCATED_MARK,
   applyDecisions,
+  charsSavedByAction,
   chooseAction,
   compactTranscript,
   eligiblePairs,
@@ -54,6 +55,22 @@ describe("pin + pairs", () => {
   it("does not judge pairs that sit in the recent window", () => {
     const eligible = eligiblePairs(sample().messages, 3);
     expect(eligible.map((p) => p.id)).toEqual(["c1", "c2"]);
+  });
+});
+
+describe("charsSavedByAction", () => {
+  it("counts dropped result bytes and zero for keep", () => {
+    const pair = {
+      id: "c1",
+      name: "bash",
+      arguments: "x",
+      callMessageIndex: 0,
+      resultMessageIndex: 1,
+      resultContent: "y".repeat(1000),
+    };
+    expect(charsSavedByAction(pair, "keep", 300)).toBe(0);
+    expect(charsSavedByAction(pair, "drop_result", 300)).toBeGreaterThan(600);
+    expect(charsSavedByAction(pair, "drop", 300)).toBeGreaterThan(900);
   });
 });
 

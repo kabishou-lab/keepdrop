@@ -1,0 +1,5 @@
+# keepdrop sidecar files
+*.keepdrop-cache.json
+*.keepdrop.json
+*.keepdrop.jsonl
+*.bak

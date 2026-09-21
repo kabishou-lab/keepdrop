@@ -39,6 +39,25 @@ describe("cli", () => {
     expect(out).toMatch(/ls_root/);
   });
 
+  it("prints per-pair char savings with --diff", async () => {
+    const { code, out } = await run(["compact", "--demo", "--markers", "--diff", "--quiet"], {
+      OPENAI_API_KEY: "",
+    });
+    expect(code).toBe(0);
+    expect(out).toMatch(/diff/);
+    expect(out).toMatch(/chars_saved/);
+    expect(out).toMatch(/ls_root/);
+  });
+
+  it("refuses to compact a cache file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keepdrop-"));
+    const cache = join(dir, "session.jsonl.keepdrop-cache.json");
+    await writeFile(cache, "{}\n");
+    const { code, err } = await run(["compact", cache], { OPENAI_API_KEY: "" });
+    expect(code).not.toBe(0);
+    expect(err).toMatch(/cache file/i);
+  });
+
   it("prints help", async () => {
     const { code, out } = await run(["--help"]);
     expect(code).toBe(0);

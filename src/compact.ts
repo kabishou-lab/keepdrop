@@ -68,6 +68,24 @@ export function estTokens(chars: number): number {
   return Math.round(chars / 4);
 }
 
+export function charsSavedByAction(
+  pair: ToolPair,
+  action: PairAction,
+  truncateChars: number,
+): number {
+  const before = pair.arguments.length + pair.resultContent.length;
+  if (action === "keep") return 0;
+  if (action === "drop_result") {
+    const cut =
+      pair.resultContent.length > truncateChars
+        ? truncateChars + TRUNCATED_MARK.length
+        : pair.resultContent.length;
+    return Math.max(0, pair.resultContent.length - cut);
+  }
+  const stub = `${DROPPED_MARK} ${pair.name} ${pair.id}`;
+  return Math.max(0, before - (DROPPED_MARK.length + stub.length));
+}
+
 export function chooseAction(
   keepCall: number,
   keepResult: number,
@@ -322,6 +340,7 @@ export async function compactTranscript(
         name: item.pair.name,
         call_message_index: item.pair.callMessageIndex,
         result_message_index: item.pair.resultMessageIndex,
+        chars_saved: charsSavedByAction(item.pair, hit.action, truncateChars),
       });
     } else {
       uncached.push(item);
@@ -377,6 +396,7 @@ export async function compactTranscript(
       confidence_result: resultAns.confidence,
       call_message_index: item.pair.callMessageIndex,
       result_message_index: item.pair.resultMessageIndex,
+      chars_saved: charsSavedByAction(item.pair, action, truncateChars),
     };
     decisions.push(dec);
     cache?.set(pairCacheKey(item.pair), {
@@ -408,6 +428,7 @@ export async function compactTranscript(
       keep,
       drop_result,
       drop,
+      chars_saved: decisions.reduce((n, d) => n + (d.chars_saved ?? 0), 0),
       chars_before: before,
       chars_after: after,
       tokens_before,

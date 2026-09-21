@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { copyFile, readFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
 import { compactTranscript, eligiblePairs, type CachedJudgment } from "./compact.js";
@@ -24,7 +24,7 @@ Usage:
   keepdrop compact <transcript.json|-> [-o out.json] [--recent N] [--drop-call P] [--drop-result P]
   keepdrop compact --demo [--jsonl] [--markers]   bundled long log (json or jsonl)
   keepdrop compact … [-o out.jsonl] [--format json|jsonl]
-  keepdrop compact … [--dry-run] [--strict] [--markers] [--json]
+  keepdrop compact … [--dry-run] [--diff] [--strict] [--markers] [--json]
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json] [--long]
@@ -72,6 +72,7 @@ function printCompact(
   file: string,
   result: Awaited<ReturnType<typeof compactTranscript>>,
   stream: NodeJS.WritableStream = process.stdout,
+  diff = false,
 ): void {
   const s = result.stats;
   const ratio = s.chars_before === 0 ? 1 : s.chars_after / s.chars_before;
@@ -85,6 +86,7 @@ function printCompact(
     `  keep         ${s.keep}`,
     `  drop_result  ${s.drop_result}`,
     `  drop         ${s.drop}`,
+    ...(s.chars_saved ? [`  chars_saved  ${s.chars_saved}`] : []),
     `  chars        ${s.chars_before} → ${s.chars_after}  (${(ratio * 100).toFixed(1)}%)`,
     `  tokens~      ${s.tokens_before} → ${s.tokens_after}  (${(tokRatio * 100).toFixed(1)}%)`,
     `  fail_open    ${s.fail_open}${s.fail_reason ? `  (${s.fail_reason})` : ""}`,
@@ -111,6 +113,14 @@ function printCompact(
       lines.push(
         `    ${id} ${name} ${d.action.padEnd(12)} call=${d.keep_call.toFixed(2)} result=${d.keep_result.toFixed(2)} conf=${Math.min(d.confidence_call, d.confidence_result).toFixed(2)}`,
       );
+    }
+  }
+  if (diff) {
+    const rows = result.decisions.filter((d) => d.action !== "keep" && (d.chars_saved ?? 0) > 0);
+    lines.push("  diff");
+    if (!rows.length) lines.push("    (no char savings)");
+    for (const d of rows) {
+      lines.push(`    ${d.id.padEnd(16)} ${d.action.padEnd(12)} -${d.chars_saved}`);
     }
   }
   stream.write(lines.join("\n") + "\n");
@@ -144,6 +154,9 @@ async function cmdCompact(args: string[]): Promise<void> {
       )
     : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
   if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
+  if (file !== "-" && /\.keepdrop-cache\.json$/i.test(basename(file))) {
+    throw new Error("refusing to compact a keepdrop cache file");
+  }
   const watching = flag(args, "--watch");
   const inPlace = flag(args, "--in-place");
   if (watching && file === "-") throw new Error("--watch cannot read stdin");
@@ -201,7 +214,9 @@ async function cmdCompact(args: string[]): Promise<void> {
     const out = arg(args, "-o") ?? arg(args, "--out") ?? outDefault;
     const asJson = flag(args, "--json");
     const quiet = flag(args, "--quiet");
-    if (!quiet) printCompact(file, result, asJson && !out ? process.stderr : process.stdout);
+    if (!quiet || flag(args, "--diff")) {
+      printCompact(file, result, asJson && !out ? process.stderr : process.stdout, flag(args, "--diff"));
+    }
     else if (result.stats.eligible > 0 || result.stats.fail_open) {
       process.stderr.write(
         `keepdrop ${result.stats.fail_open ? "fail-open" : "ok"}  eligible=${result.stats.eligible}  ${result.stats.chars_before}→${result.stats.chars_after}\n`,
