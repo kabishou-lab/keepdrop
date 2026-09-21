@@ -23,7 +23,7 @@ cp .env.example .env   # OPENAI_API_KEY + MiniMax-M3 defaults
 npx tsx src/cli.ts compact --demo
 ```
 
-`--dry-run` lists eligible pairs with no API call. `--strict` exits 2 on fail-open. `--watch` re-compacts when the file changes (self-writes ignored; unchanged pairs cached). `--cache-file` persists that cache (`file.keepdrop-cache.json` under `--watch`). `--max-new N` judges at most N new pairs per tick. `--in-place` rewrites the file and keeps a one-time `.bak`. `-o out.jsonl` writes JSONL. `--demo --jsonl` uses the bundled JSONL log. `keepdrop eval --long` scores the 26k-char fixture.
+`--dry-run` lists eligible pairs with no API call. `--strict` exits 2 on fail-open. `--watch` re-compacts when the file changes (self-writes ignored; unchanged pairs cached). `--cache-file` persists that cache (`file.keepdrop-cache.json` under `--watch`). `--max-new N` judges at most N new pairs per tick. `--drain` (on by default with `--watch`) repeats until pending is 0. `--in-place` rewrites the file and keeps a one-time `.bak`. `-o out.jsonl` writes JSONL. `--demo --jsonl` uses the bundled JSONL log. `keepdrop eval --long` scores the 26k-char fixture.
 
 Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
 

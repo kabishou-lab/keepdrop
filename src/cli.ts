@@ -28,7 +28,7 @@ Usage:
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json] [--long]
-  keepdrop compact … [--watch] [--in-place] [--cache-file f] [--max-new N] [--quiet]
+  keepdrop compact … [--watch] [--in-place] [--cache-file f] [--max-new N] [--drain] [--quiet]
 
 Env: OPENAI_API_KEY  OPENAI_BASE_URL  OPENAI_MODEL
 
@@ -166,7 +166,7 @@ async function cmdCompact(args: string[]): Promise<void> {
     for (const [k, v] of loaded) cache.set(k, v);
   }
 
-  const runOnce = async () => {
+  const runOnce = async (): Promise<{ pending: number; fail_open: boolean } | undefined> => {
     const transcript = await readTranscript(file);
     const recent = num(args, "--recent", 6);
     if (flag(args, "--dry-run")) {
@@ -176,7 +176,7 @@ async function cmdCompact(args: string[]): Promise<void> {
           pairs.map((p, i) => `    ${String(i).padStart(2)} ${p.name.padEnd(8)} ${p.id}  ${p.resultContent.length} chars`).join("\n") +
           (pairs.length ? "\n" : ""),
       );
-      return;
+      return undefined;
     }
     const markers = flag(args, "--markers");
     if (markers && !watching) {
@@ -231,12 +231,26 @@ async function cmdCompact(args: string[]): Promise<void> {
     }
     if (cacheFile) await saveCacheFile(resolve(cacheFile), cache);
     if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
+    return { pending: result.stats.pending ?? 0, fail_open: result.stats.fail_open };
   };
 
-  await runOnce();
+  const drain = async () => {
+    let prev = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 64; i++) {
+      const stats = await runOnce();
+      if (!stats || stats.fail_open) return;
+      if (stats.pending <= 0) return;
+      if (stats.pending >= prev) return;
+      prev = stats.pending;
+    }
+  };
+
+  const shouldDrain = flag(args, "--drain") || watching;
+  if (shouldDrain) await drain();
+  else await runOnce();
   if (!watching) return;
   process.stderr.write(`keepdrop: watching ${file}  (Ctrl-C to stop)\n`);
-  watcher = watchFile(resolve(file), runOnce, {
+  watcher = watchFile(resolve(file), () => drain(), {
     debounceMs: 250,
     pollMs: 400,
     onError: (err) => {

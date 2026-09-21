@@ -125,6 +125,30 @@ describe("cli", () => {
     expect(text).toMatch(/"role":"user"/);
   });
 
+  it("drains pending pairs when --max-new is set", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keepdrop-"));
+    const outFile = join(dir, "out.json");
+    const once = await run(
+      ["compact", "--demo", "--markers", "--max-new", "3", "-o", outFile, "--quiet"],
+      { OPENAI_API_KEY: "" },
+    );
+    expect(once.code).toBe(0);
+    const partial = JSON.parse(await readFile(outFile, "utf8")) as {
+      stats: { pending?: number; keep: number; drop: number; drop_result: number };
+    };
+    expect(partial.stats.pending).toBeGreaterThan(0);
+    const drained = await run(
+      ["compact", "--demo", "--markers", "--max-new", "3", "--drain", "-o", outFile, "--quiet"],
+      { OPENAI_API_KEY: "" },
+    );
+    expect(drained.code).toBe(0);
+    const full = JSON.parse(await readFile(outFile, "utf8")) as {
+      stats: { pending?: number; keep: number; drop: number; drop_result: number };
+    };
+    expect(full.stats.pending ?? 0).toBe(0);
+    expect(full.stats.keep + full.stats.drop + full.stats.drop_result).toBe(15);
+  });
+
   it("evals the long fixture against marker gold", async () => {
     const { code, out, err } = await run(["eval", "--long"], { OPENAI_API_KEY: "" });
     expect(code).toBe(0);
