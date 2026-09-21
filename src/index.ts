@@ -16,6 +16,7 @@ export {
 export { parseTranscriptText } from "./ingest.js";
 export { toJsonl, toKeepdropJson, wantsJsonl } from "./serialize.js";
 export { watchFile } from "./watch.js";
+export { atomicWrite } from "./fsx.js";
 export type {
   Answer,
   ChoiceAnswer,

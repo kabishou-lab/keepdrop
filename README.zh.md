@@ -27,6 +27,7 @@ npx github:kabishou-lab/keepdrop compact --demo --markers
 npx github:kabishou-lab/keepdrop compact --demo --dry-run
 keepdrop eval --long
 keepdrop compact session.jsonl --watch -o compact.jsonl
+keepdrop compact session.jsonl --in-place --markers
 keepdrop compact --demo --jsonl --markers -o out.jsonl
 ```
 

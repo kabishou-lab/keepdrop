@@ -3,6 +3,8 @@ import { stat } from "node:fs/promises";
 
 export interface WatchHandle {
   close: () => void;
+  /** Call after we write this path so our own compact does not retrigger. */
+  markSelfWrite: () => Promise<void>;
 }
 
 export interface WatchOpts {
@@ -27,10 +29,14 @@ export function watchFile(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
 
+  let suppressUntil = 0;
+
   const kick = () => {
     if (closed) return;
+    if (Date.now() < suppressUntil) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
+      if (Date.now() < suppressUntil) return;
       Promise.resolve(onChange()).catch(onError);
     }, debounceMs);
   };
@@ -68,6 +74,15 @@ export function watchFile(
       if (timer) clearTimeout(timer);
       clearInterval(poll);
       watcher?.close();
+    },
+    markSelfWrite: async () => {
+      suppressUntil = Date.now() + debounceMs + pollMs + 100;
+      try {
+        const st = await stat(path);
+        last = st.mtimeMs;
+      } catch {
+        // file may not exist yet
+      }
     },
   };
 }

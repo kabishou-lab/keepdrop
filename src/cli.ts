@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
 import { compactTranscript, eligiblePairs } from "./compact.js";
-import { watchFile } from "./watch.js";
+import { atomicWrite } from "./fsx.js";
+import { watchFile, type WatchHandle } from "./watch.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
 import { loadEnv } from "./env.js";
 import { parseTranscriptText } from "./ingest.js";
@@ -25,7 +27,7 @@ Usage:
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json] [--long]
-  keepdrop compact … [--watch] [-o out.json] [--quiet]
+  keepdrop compact … [--watch] [--in-place] [-o out.json] [--quiet]
 
 Env: OPENAI_API_KEY  OPENAI_BASE_URL  OPENAI_MODEL
 
@@ -140,12 +142,18 @@ async function cmdCompact(args: string[]): Promise<void> {
     : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
   if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
   const watching = flag(args, "--watch");
+  const inPlace = flag(args, "--in-place");
   if (watching && file === "-") throw new Error("--watch cannot read stdin");
+  if (inPlace && file === "-") throw new Error("--in-place cannot write stdin");
   const format = arg(args, "--format");
   const outFlag = arg(args, "-o") ?? arg(args, "--out");
-  const outDefault = watching && !outFlag
-    ? `${file}${wantsJsonl(file, format) ? ".keepdrop.jsonl" : ".keepdrop.json"}`
-    : undefined;
+  const outDefault = inPlace
+    ? file
+    : watching && !outFlag
+      ? `${file}${wantsJsonl(file, format) ? ".keepdrop.jsonl" : ".keepdrop.json"}`
+      : undefined;
+  let backedUp = false;
+  let watcher: WatchHandle | undefined;
 
   const runOnce = async () => {
     const transcript = await readTranscript(file);
@@ -192,7 +200,19 @@ async function cmdCompact(args: string[]): Promise<void> {
       ? toJsonl(compacted)
       : toKeepdropJson(compacted, { decisions: result.decisions, stats: result.stats });
     if (out) {
-      await writeFile(resolve(out), body, "utf8");
+      const dest = resolve(out);
+      if (inPlace && !backedUp) {
+        try {
+          await copyFile(resolve(file), `${dest}.bak`, fsConstants.COPYFILE_EXCL);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code !== "EEXIST") throw err;
+        }
+        backedUp = true;
+      }
+      if (watching && dest === resolve(file)) await watcher?.markSelfWrite();
+      await atomicWrite(dest, body);
+      if (watching && dest === resolve(file)) await watcher?.markSelfWrite();
     } else if (asJson || jsonl) {
       process.stdout.write(body);
     }
@@ -202,7 +222,7 @@ async function cmdCompact(args: string[]): Promise<void> {
   await runOnce();
   if (!watching) return;
   process.stderr.write(`keepdrop: watching ${file}  (Ctrl-C to stop)\n`);
-  const handle = watchFile(resolve(file === "-" ? process.cwd() : file), runOnce, {
+  watcher = watchFile(resolve(file), runOnce, {
     debounceMs: 250,
     pollMs: 400,
     onError: (err) => {
@@ -211,7 +231,7 @@ async function cmdCompact(args: string[]): Promise<void> {
   });
   await new Promise<void>((resolveWait) => {
     const stop = () => {
-      handle.close();
+      watcher?.close();
       resolveWait();
     };
     process.on("SIGINT", stop);

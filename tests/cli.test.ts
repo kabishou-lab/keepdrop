@@ -46,6 +46,22 @@ describe("cli", () => {
     expect(out).toMatch(/not Jev/i);
   });
 
+  it("compacts --in-place and leaves a .bak", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keepdrop-"));
+    const src = join(dir, "session.json");
+    await writeFile(src, await readFile("fixtures/transcript.sample.json", "utf8"));
+    const before = (await readFile(src, "utf8")).length;
+    const { code } = await run(["compact", src, "--in-place", "--markers"], { OPENAI_API_KEY: "" });
+    expect(code).toBe(0);
+    const after = await readFile(src, "utf8");
+    const bak = await readFile(`${src}.bak`, "utf8");
+    expect(bak.length).toBe(before);
+    const orig = JSON.parse(bak) as { messages: unknown[] };
+    const next = JSON.parse(after) as { messages: unknown[] };
+    expect(JSON.stringify(next.messages).length).toBeLessThan(JSON.stringify(orig.messages).length);
+    expect(after).toMatch(/keepdrop dropped|keepdrop truncated/);
+  });
+
   it("compacts a transcript with fail-open when no key is set", async () => {
     const dir = await mkdtemp(join(tmpdir(), "keepdrop-"));
     const outFile = join(dir, "out.json");
