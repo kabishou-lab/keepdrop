@@ -26,7 +26,8 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
 npx github:kabishou-lab/keepdrop compact --demo --markers
 npx github:kabishou-lab/keepdrop compact --demo --dry-run
 keepdrop eval --long
-keepdrop compact session.jsonl --watch -o compact.json
+keepdrop compact session.jsonl --watch -o compact.jsonl
+keepdrop compact --demo --jsonl --markers -o out.jsonl
 ```
 
 长会话夹具 `fixtures/transcript.long.json`（合成编码 agent 日志，非产品数据），MiniMax-M3 实测 2026-09-21：

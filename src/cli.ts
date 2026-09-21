@@ -8,6 +8,7 @@ import { watchFile } from "./watch.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
 import { loadEnv } from "./env.js";
 import { parseTranscriptText } from "./ingest.js";
+import { toJsonl, toKeepdropJson, wantsJsonl } from "./serialize.js";
 import { keywordJudge } from "./run-eval.js";
 import type { Question, Transcript } from "./types.js";
 
@@ -18,7 +19,8 @@ function usage(): string {
 
 Usage:
   keepdrop compact <transcript.json|-> [-o out.json] [--recent N] [--drop-call P] [--drop-result P]
-  keepdrop compact --demo [--markers]     bundled long coding-agent log
+  keepdrop compact --demo [--jsonl] [--markers]   bundled long log (json or jsonl)
+  keepdrop compact … [-o out.jsonl] [--format json|jsonl]
   keepdrop compact … [--dry-run] [--strict] [--markers] [--json]
   keepdrop compact … [--min-confidence P] [--truncate N]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
@@ -129,13 +131,21 @@ function packageRoot(): string {
 
 async function cmdCompact(args: string[]): Promise<void> {
   const demo = flag(args, "--demo");
+  const demoJsonl = demo && (flag(args, "--jsonl") || arg(args, "--format") === "jsonl");
   const file = demo
-    ? resolve(packageRoot(), "fixtures/transcript.long.json")
+    ? resolve(
+        packageRoot(),
+        demoJsonl ? "fixtures/transcript.long.jsonl" : "fixtures/transcript.long.json",
+      )
     : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
   if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
   const watching = flag(args, "--watch");
   if (watching && file === "-") throw new Error("--watch cannot read stdin");
-  const outDefault = watching && !arg(args, "-o") && !arg(args, "--out") ? `${file}.keepdrop.json` : undefined;
+  const format = arg(args, "--format");
+  const outFlag = arg(args, "-o") ?? arg(args, "--out");
+  const outDefault = watching && !outFlag
+    ? `${file}${wantsJsonl(file, format) ? ".keepdrop.jsonl" : ".keepdrop.json"}`
+    : undefined;
 
   const runOnce = async () => {
     const transcript = await readTranscript(file);
@@ -176,15 +186,15 @@ async function cmdCompact(args: string[]): Promise<void> {
         `keepdrop ${result.stats.fail_open ? "fail-open" : "ok"}  eligible=${result.stats.eligible}  ${result.stats.chars_before}→${result.stats.chars_after}\n`,
       );
     }
-    const payload = {
-      messages: result.messages,
-      decisions: result.decisions,
-      stats: result.stats,
-    };
+    const compacted: Transcript = { goal: transcript.goal, messages: result.messages };
+    const jsonl = wantsJsonl(out, format);
+    const body = jsonl
+      ? toJsonl(compacted)
+      : toKeepdropJson(compacted, { decisions: result.decisions, stats: result.stats });
     if (out) {
-      await writeFile(resolve(out), JSON.stringify(payload, null, 2) + "\n", "utf8");
-    } else if (asJson) {
-      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+      await writeFile(resolve(out), body, "utf8");
+    } else if (asJson || jsonl) {
+      process.stdout.write(body);
     }
     if (flag(args, "--strict") && result.stats.fail_open) process.exitCode = 2;
   };

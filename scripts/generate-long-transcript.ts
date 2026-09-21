@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { toJsonl } from "../src/serialize.js";
 import type { Message, Transcript } from "../src/types.js";
 
 function pad(label: string, n: number): string {
@@ -213,5 +214,7 @@ const transcript: Transcript = {
 
 const out = resolve("fixtures/transcript.long.json");
 await writeFile(out, JSON.stringify(transcript) + "\n", "utf8");
+const jsonl = resolve("fixtures/transcript.long.jsonl");
+await writeFile(jsonl, toJsonl(transcript), "utf8");
 const chars = JSON.stringify(transcript.messages).length;
-process.stdout.write(`wrote ${out}  messages=${messages.length}  chars=${chars}\n`);
+process.stdout.write(`wrote ${out} and ${jsonl}  messages=${messages.length}  chars=${chars}\n`);

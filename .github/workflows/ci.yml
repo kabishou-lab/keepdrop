@@ -20,3 +20,8 @@ jobs:
       - run: npx tsx src/cli.ts eval
         env:
           OPENAI_API_KEY: ""
+      - run: npx tsx src/cli.ts eval --long
+        env:
+          OPENAI_API_KEY: ""
+      - run: npx tsx src/cli.ts compact --demo --dry-run
+      - run: npx tsx src/cli.ts compact --demo --markers --quiet

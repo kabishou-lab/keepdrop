@@ -95,6 +95,20 @@ describe("cli", () => {
     expect(out).toMatch(/decisions/);
   });
 
+  it("compacts demo jsonl and writes jsonl", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keepdrop-"));
+    const outFile = join(dir, "out.jsonl");
+    const { code, out } = await run(
+      ["compact", "--demo", "--jsonl", "--markers", "-o", outFile],
+      { OPENAI_API_KEY: "" },
+    );
+    expect(code).toBe(0);
+    expect(out).toMatch(/fail_open    false/);
+    const text = await readFile(outFile, "utf8");
+    expect(text.split("\n").filter(Boolean).length).toBeGreaterThan(10);
+    expect(text).toMatch(/"role":"user"/);
+  });
+
   it("evals the long fixture against marker gold", async () => {
     const { code, out, err } = await run(["eval", "--long"], { OPENAI_API_KEY: "" });
     expect(code).toBe(0);
