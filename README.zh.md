@@ -22,13 +22,15 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
 
 ## 实测（2026-09-20，MiniMax-M3）
 
+长会话夹具 `fixtures/transcript.long.json`（合成编码 agent 日志，非产品数据），MiniMax-M3 实测 2026-09-21：
+
 ```
-keepdrop compact  fixtures/transcript.sample.json
-  eligible 3 · keep 1 · drop_result 1 · drop 1
-  2268 → 2129 字符 · 3875 ms · fail_open false
+chars  26915 → 8512  (31.6%)
+tokens~ 6729 → 2128
+41s · $0.00588 · fail_open false
 ```
 
-`keepdrop eval`：9 对工具动作，MiniMax-M3 与金标 **9/9**，fail-open 0。关键字基线 9/9（不是模型）。整段 drop 门槛 0.3，截断门槛 0.5，置信度不够则 keep。
+日志砍掉约 68%。`--markers` 离线基线砍到 56.3%。Pi 不提供插件，见 `examples/pi.md`。
 
 账单工单 `decide`：urgent 0.95 / team=billing / severity=blocking，约 3.3 秒。
 

@@ -254,7 +254,15 @@ export async function decide(
       timeoutMs: opts.timeoutMs,
       fetchImpl: opts.fetchImpl,
     });
-    const bag = unwrapAnswers(extractJsonObject(chat.text), ids);
+    let parsed: unknown;
+    try {
+      parsed = extractJsonObject(chat.text);
+    } catch (err) {
+      const hint = (chat.text || "").replace(/\s+/g, " ").slice(0, 180);
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `${msg}${hint ? `: ${hint}` : ""}`, raw: chat.text };
+    }
+    const bag = unwrapAnswers(parsed, ids);
     const answers: Record<string, Answer> = {};
     for (const id of ids) {
       const raw = bag[id] ?? bag[id.replace(/-/g, "_")];

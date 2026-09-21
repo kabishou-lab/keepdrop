@@ -114,6 +114,9 @@ export interface CompactResult {
     chars_after: number;
     tokens_before: number;
     tokens_after: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    usd_judge?: number;
     fail_open: boolean;
     fail_reason?: string;
     model?: string;

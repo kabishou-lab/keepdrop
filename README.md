@@ -34,29 +34,30 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json --markers
 
 1. Pin the first message and the last `N` (default 6).
 2. Find complete tool-call / tool-result pairs outside that window.
-3. Ask two noul questions per pair in **one** Chat Completions call: keep the call? keep the result?
+3. Ask two noul questions per pair (chunks of 4 pairs so a thinking model does not blow `max_tokens`).
 4. Apply `keep` / `drop_result` (truncate to a deterministic head) / `drop` (stub, do not rewrite user text).
 
 Nothing is summarized. Nothing is paraphrased.
 
-Captured 2026-09-20 against **MiniMax-M3** (`https://api.minimaxi.com/v1`), after the keep/drop policy pass:
+Captured 2026-09-21 against **MiniMax-M3** on `fixtures/transcript.long.json` (synthetic coding-agent log, not product data):
 
 ```
-keepdrop compact  fixtures/transcript.sample.json
-  eligible     3
-  keep         1
-  drop_result  1
-  drop         1
-  chars        2268 → 2129  (93.9%)
-  tokens~      567 → 532  (93.8%)
+keepdrop compact  fixtures/transcript.long.json
+  eligible     15
+  keep         3
+  drop_result  2
+  drop         10
+  chars        26915 → 8512  (31.6%)
+  tokens~      6729 → 2128  (31.6%)
   fail_open    false
   model        MiniMax-M3
-  latency_ms   3875
-  decisions
-    call_search_1    grep     drop         call=0.05 result=0.02
-    call_read_1      read     keep         call=0.92 result=0.90
-    call_test_1      bash     drop_result  call=0.40 result=0.03
+  latency_ms   41200
+  judge        $0.00588  (5275 in / 3580 out @ $0.3/$1.2 per MTok)
 ```
+
+**68% of the log gone. Six-tenths of a cent. No waitlist.**
+
+`--markers` (not a model) on the same file: 26915 → 15159 (56.3%). Live MiniMax was more aggressive; user text stayed verbatim either way.
 
 Full drop requires `keep_call < 0.3` and enough confidence. Truncate uses `keep_result < 0.5`. Uncertain answers stay `keep`.
 
@@ -142,8 +143,19 @@ Generic transcript JSON. Convert Chat Completions-style dumps with [`examples/fr
 | `OPENAI_API_KEY` | required for live calls |
 | `OPENAI_BASE_URL` | default `https://api.minimaxi.com/v1` |
 | `OPENAI_MODEL` | default `MiniMax-M3` |
+| `OPENAI_INPUT_USD_PER_MTOK` | default `0.30` (judge `$` line) |
+| `OPENAI_OUTPUT_USD_PER_MTOK` | default `1.20` |
 
 On MiniMax: `json_object` then prompt JSON. On other OpenAI-compatible hosts: JSON Schema, then `json_object`, then prompt.
+
+## Pi / any agent
+
+Not a plugin. Flatten to `messages[]` and pipe. See [examples/pi.md](examples/pi.md).
+
+```bash
+jq -f examples/from-openai-messages.jq session.json \
+  | npx tsx src/cli.ts compact - --json
+```
 
 ## License
 

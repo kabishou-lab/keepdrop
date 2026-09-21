@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { decide } from "./client.js";
 import { compactTranscript } from "./compact.js";
+import { formatUsd, pricePerMtok } from "./cost.js";
 import { loadEnv } from "./env.js";
 import { keywordJudge } from "./run-eval.js";
 import type { Question, Transcript } from "./types.js";
@@ -76,6 +77,12 @@ function printCompact(
   ];
   if (s.model) lines.push(`  model        ${s.model}`);
   if (s.latency_ms !== undefined) lines.push(`  latency_ms   ${s.latency_ms}`);
+  if (s.usd_judge !== undefined && (s.input_tokens || s.output_tokens)) {
+    const price = pricePerMtok();
+    lines.push(
+      `  judge        ${formatUsd(s.usd_judge)}  (${s.input_tokens ?? 0} in / ${s.output_tokens ?? 0} out @ $${price.input}/$${price.output} per MTok)`,
+    );
+  }
   if (result.decisions.length) {
     lines.push("  decisions");
     for (const d of result.decisions) {
@@ -121,6 +128,7 @@ async function cmdCompact(args: string[]): Promise<void> {
     dropResult: num(args, "--drop-result", 0.5),
     minConfidence: num(args, "--min-confidence", 0.35),
     truncateChars: num(args, "--truncate", 300),
+    pairChunk: num(args, "--pair-chunk", 4),
     judge: markers ? keywordJudge : undefined,
   });
   const out = arg(args, "-o") ?? arg(args, "--out");

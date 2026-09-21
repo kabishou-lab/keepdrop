@@ -123,7 +123,7 @@ export async function chatJson(opts: ChatJsonOptions): Promise<ChatJsonResponse>
   const basePayload: Record<string, unknown> = {
     model: opts.model,
     temperature: 0,
-    max_tokens: 2048,
+    max_tokens: minimax ? 8192 : 2048,
     messages: messagesOf(opts.system, opts.user),
   };
   if (minimax) basePayload.reasoning_split = true;

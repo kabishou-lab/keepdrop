@@ -1,6 +1,6 @@
 {
   "name": "keepdrop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Jev-compatible System One on the OpenAI-compatible API you already have. Verbatim keep/drop compaction. No waitlist, no weights.",
   "type": "module",
   "bin": {
@@ -25,6 +25,7 @@
     "prepare": "npm run build",
     "test": "vitest run",
     "eval": "tsx src/run-eval.ts",
+    "long": "tsx scripts/generate-long-transcript.ts",
     "keepdrop": "tsx src/cli.ts",
     "prepublishOnly": "npm test && npm run build"
   },

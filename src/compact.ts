@@ -1,6 +1,8 @@
 import { decide, type DecideOptions } from "./client.js";
+import { pricePerMtok, usdJudge } from "./cost.js";
 import { noul } from "./questions.js";
 import type {
+  Answer,
   CompactResult,
   DecideResult,
   Message,
@@ -29,6 +31,8 @@ export interface CompactOptions extends DecideOptions {
   dropResult?: number;
   /** Uncertain answers stay keep. Default 0.35. */
   minConfidence?: number;
+  /** Pairs per judge request. Default 8. Long transcripts are split. */
+  pairChunk?: number;
   truncateChars?: number;
   judge?: (state: string, questions: Record<string, Question>) => Promise<DecideResult>;
 }
@@ -112,16 +116,28 @@ function truncate(text: string, chars: number): string {
   return text.slice(0, chars) + TRUNCATED_MARK;
 }
 
-function buildState(transcript: Transcript, pairs: ToolPair[], truncateChars: number): string {
+function buildState(
+  transcript: Transcript,
+  items: { index: number; pair: ToolPair }[],
+  truncateChars: number,
+): string {
   const goal = transcript.goal?.trim() || "(none given)";
   const first = transcript.messages[0];
   const firstLine =
     first && first.role === "user"
       ? (first.content ?? "").slice(0, 500)
       : "(first message is not user text)";
-  const blocks = pairs.map((pair, i) => {
+  const blocks = items.map(({ index, pair }) => {
+    const blob = `${pair.arguments}\n${pair.resultContent}`;
+    const tokens = [
+      /\[stale\]/i.test(blob) ? "[stale]" : "",
+      /\[superseded\]/i.test(blob) ? "[superseded]" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     return [
-      `[pair ${i}] id=${pair.id} name=${pair.name}`,
+      `[pair ${index}] id=${pair.id} name=${pair.name}`,
+      `tokens: ${tokens || "none"}`,
       `call: ${pair.arguments.slice(0, truncateChars)}`,
       `result_head: ${pair.resultContent.slice(0, truncateChars)}`,
     ].join("\n");
@@ -224,43 +240,61 @@ export async function compactTranscript(
     };
   }
 
-  const questions: Record<string, Question> = {};
-  const map: { pair: ToolPair; callId: string; resultId: string }[] = [];
+  const map: { index: number; pair: ToolPair; callId: string; resultId: string }[] = [];
   for (let i = 0; i < pairs.length; i++) {
     const pair = pairs[i];
-    const callId = `call${i}`;
-    const resultId = `result${i}`;
-    questions[callId] = noul(
-      `Pair ${i} id=${pair.id} name=${pair.name}: the tool CALL is still needed. False if obsolete, [stale], or replaced by later work.`,
-    );
-    questions[resultId] = noul(
-      `Pair ${i} id=${pair.id} name=${pair.name}: the RESULT text is still needed verbatim. False if [superseded], [stale], or replaced by a later result.`,
-    );
-    map.push({ pair, callId, resultId });
+    map.push({
+      index: i,
+      pair,
+      callId: `call${i}`,
+      resultId: `result${i}`,
+    });
   }
+
+  const questionFor = (item: (typeof map)[number]): Record<string, Question> => ({
+    [item.callId]: noul(
+      `Pair ${item.index} id=${item.pair.id} name=${item.pair.name}: the tool CALL is still needed. False if obsolete, [stale], or replaced by later work.`,
+    ),
+    [item.resultId]: noul(
+      `Pair ${item.index} id=${item.pair.id} name=${item.pair.name}: the RESULT text is still needed verbatim. False if [superseded], [stale], or replaced by a later result.`,
+    ),
+  });
 
   const judge =
     opts.judge ??
     (async (state: string, qs: Record<string, Question>) =>
       decide({ state, questions: qs }, opts));
 
-  let judged: DecideResult;
+  const pairChunk = Math.max(1, opts.pairChunk ?? 4);
+  const merged: Record<string, Answer> = {};
+  let input_tokens = 0;
+  let output_tokens = 0;
+  let latency_ms = 0;
+  let model: string | undefined;
   try {
-    judged = await judge(buildState(transcript, pairs, truncateChars), questions);
+    for (let start = 0; start < map.length; start += pairChunk) {
+      const slice = map.slice(start, start + pairChunk);
+      const qs = Object.assign({}, ...slice.map(questionFor));
+      const judged = await judge(buildState(transcript, slice, truncateChars), qs);
+      if (!judged.ok) {
+        return empty({ fail_reason: judged.error });
+      }
+      Object.assign(merged, judged.answers);
+      input_tokens += judged.usage.input_tokens;
+      output_tokens += judged.usage.output_tokens;
+      latency_ms += judged.usage.latency_ms;
+      model = judged.model;
+    }
   } catch (err) {
     return empty({ fail_reason: err instanceof Error ? err.message : String(err) });
   }
 
-  if (!judged.ok) {
-    return empty({ fail_reason: judged.error });
-  }
-
   const decisions: PairDecision[] = [];
   for (const item of map) {
-    const callAns = judged.answers[item.callId];
-    const resultAns = judged.answers[item.resultId];
+    const callAns = merged[item.callId];
+    const resultAns = merged[item.resultId];
     if (!callAns || callAns.type !== "noul" || !resultAns || resultAns.type !== "noul") {
-      return empty({ fail_reason: "judge returned an unexpected shape", model: judged.model });
+      return empty({ fail_reason: "judge returned an unexpected shape", model });
     }
     const action = chooseAction(callAns.noul, resultAns.noul, callAns.confidence, resultAns.confidence, {
       dropCall,
@@ -284,6 +318,8 @@ export async function compactTranscript(
   const keep = decisions.filter((d) => d.action === "keep").length;
   const drop_result = decisions.filter((d) => d.action === "drop_result").length;
   const drop = decisions.filter((d) => d.action === "drop").length;
+  const after = messageChars(messages);
+  const price = pricePerMtok();
   return {
     messages,
     decisions,
@@ -293,12 +329,15 @@ export async function compactTranscript(
       drop_result,
       drop,
       chars_before: before,
-      chars_after: messageChars(messages),
+      chars_after: after,
       tokens_before: estTokens(before),
-      tokens_after: estTokens(messageChars(messages)),
+      tokens_after: estTokens(after),
+      input_tokens,
+      output_tokens,
+      usd_judge: usdJudge(input_tokens, output_tokens, price),
       fail_open: false,
-      model: judged.model,
-      latency_ms: judged.usage.latency_ms,
+      model,
+      latency_ms,
     },
   };
 }
