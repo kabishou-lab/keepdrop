@@ -23,6 +23,20 @@ export function usdJudge(inputTokens: number, outputTokens: number, price = pric
   return (inputTokens / 1_000_000) * price.input + (outputTokens / 1_000_000) * price.output;
 }
 
+/** Hypothetical: dropped transcript tokens billed as the next coding-model prompt. */
+export function coderUsdPerMtok(): number {
+  loadEnv();
+  return envNum("OPENAI_CODER_USD_PER_MTOK") ?? 2;
+}
+
+export function usdSaved(
+  tokensBefore: number,
+  tokensAfter: number,
+  coderPerM = coderUsdPerMtok(),
+): number {
+  return (Math.max(0, tokensBefore - tokensAfter) / 1_000_000) * coderPerM;
+}
+
 export function formatUsd(n: number): string {
   if (n === 0) return "$0";
   if (n < 0.0001) return `$${n.toExponential(1)}`;

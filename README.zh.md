@@ -22,6 +22,10 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
 
 ## 实测（2026-09-20，MiniMax-M3）
 
+```bash
+npx github:kabishou-lab/keepdrop compact --demo --markers
+```
+
 长会话夹具 `fixtures/transcript.long.json`（合成编码 agent 日志，非产品数据），MiniMax-M3 实测 2026-09-21：
 
 ```

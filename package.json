@@ -1,6 +1,6 @@
 {
   "name": "keepdrop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Jev-compatible System One on the OpenAI-compatible API you already have. Verbatim keep/drop compaction. No waitlist, no weights.",
   "type": "module",
   "bin": {

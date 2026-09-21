@@ -1,5 +1,5 @@
 import { decide, type DecideOptions } from "./client.js";
-import { pricePerMtok, usdJudge } from "./cost.js";
+import { coderUsdPerMtok, pricePerMtok, usdJudge, usdSaved } from "./cost.js";
 import { noul } from "./questions.js";
 import type {
   Answer,
@@ -320,6 +320,9 @@ export async function compactTranscript(
   const drop = decisions.filter((d) => d.action === "drop").length;
   const after = messageChars(messages);
   const price = pricePerMtok();
+  const tokens_before = estTokens(before);
+  const tokens_after = estTokens(after);
+  const coder = coderUsdPerMtok();
   return {
     messages,
     decisions,
@@ -330,11 +333,13 @@ export async function compactTranscript(
       drop,
       chars_before: before,
       chars_after: after,
-      tokens_before: estTokens(before),
-      tokens_after: estTokens(after),
+      tokens_before,
+      tokens_after,
       input_tokens,
       output_tokens,
       usd_judge: usdJudge(input_tokens, output_tokens, price),
+      usd_saved_at_coder: usdSaved(tokens_before, tokens_after, coder),
+      coder_usd_per_mtok: coder,
       fail_open: false,
       model,
       latency_ms,

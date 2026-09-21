@@ -55,6 +55,14 @@ describe("cli", () => {
     expect(payload.messages.length).toBeGreaterThan(3);
   });
 
+  it("compacts --demo --markers from the bundled long fixture", async () => {
+    const { code, out } = await run(["compact", "--demo", "--markers"], { OPENAI_API_KEY: "" });
+    expect(code).toBe(0);
+    expect(out).toMatch(/fail_open    false/);
+    expect(out).toMatch(/saved~/);
+    expect(out).toMatch(/eligible\s+15/);
+  });
+
   it("compacts the sample with --markers without an API key", async () => {
     const { code, out, err } = await run(
       ["compact", "fixtures/transcript.sample.json", "--markers", "--recent", "6"],

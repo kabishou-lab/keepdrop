@@ -1,6 +1,6 @@
 export { choice, noul, score } from "./questions.js";
 export { decide, resolveConfig, type DecideOptions } from "./client.js";
-export { formatUsd, pricePerMtok, usdJudge } from "./cost.js";
+export { formatUsd, pricePerMtok, usdJudge, usdSaved } from "./cost.js";
 export {
   applyDecisions,
   chooseAction,

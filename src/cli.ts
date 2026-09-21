@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
 import { compactTranscript } from "./compact.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
@@ -15,6 +16,7 @@ function usage(): string {
 
 Usage:
   keepdrop compact <transcript.json|-> [-o out.json] [--recent N] [--drop-call P] [--drop-result P]
+  keepdrop compact --demo [--markers]     bundled long coding-agent log
   keepdrop compact … [--min-confidence P] [--truncate N] [--markers] [--json]
   keepdrop decide  --state <text-or-file> --questions <questions.json>
   keepdrop eval    [cases.json]
@@ -83,6 +85,12 @@ function printCompact(
       `  judge        ${formatUsd(s.usd_judge)}  (${s.input_tokens ?? 0} in / ${s.output_tokens ?? 0} out @ $${price.input}/$${price.output} per MTok)`,
     );
   }
+  if (s.usd_saved_at_coder !== undefined && s.tokens_before > s.tokens_after) {
+    const coder = s.coder_usd_per_mtok ?? 2;
+    lines.push(
+      `  saved~       ${formatUsd(s.usd_saved_at_coder)}  if dropped tokens were the next coder prompt @ $${coder}/MTok`,
+    );
+  }
   if (result.decisions.length) {
     lines.push("  decisions");
     for (const d of result.decisions) {
@@ -114,9 +122,16 @@ function readStdin(): Promise<string> {
   });
 }
 
+function packageRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
 async function cmdCompact(args: string[]): Promise<void> {
-  const file = args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
-  if (!file) throw new Error("compact needs a transcript json path (or - for stdin)");
+  const demo = flag(args, "--demo");
+  const file = demo
+    ? resolve(packageRoot(), "fixtures/transcript.long.json")
+    : args.find((a) => a === "-" || (!a.startsWith("-") && a !== "compact"));
+  if (!file) throw new Error("compact needs a transcript json path, - for stdin, or --demo");
   const transcript = await readTranscript(file);
   const markers = flag(args, "--markers");
   if (markers) {

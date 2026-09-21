@@ -11,16 +11,19 @@ This is not Jev. Numbers are ordinary model estimates, not RLCD-calibrated proba
 
 ## 60 seconds
 
-```bash
-cp .env.example .env   # then put your key in .env (never commit it)
-# lab default:
-# OPENAI_BASE_URL=https://api.minimaxi.com/v1
-# OPENAI_MODEL=MiniMax-M3
+No npm login required. No TypeSafe waitlist.
 
-npx tsx src/cli.ts compact fixtures/transcript.sample.json -o compact.json
-# agents can pipe:
-#   cat session.json | npx tsx src/cli.ts compact - --json
+```bash
+# offline, bundled 26k-char log (not a model):
+npx github:kabishou-lab/keepdrop compact --demo --markers
+
+# live MiniMax / any OpenAI-compatible API:
+git clone https://github.com/kabishou-lab/keepdrop && cd keepdrop
+cp .env.example .env   # OPENAI_API_KEY + MiniMax-M3 defaults
+npx tsx src/cli.ts compact --demo
 ```
+
+`npm publish` is not done yet (`npm whoami` needs your login). Until then use the GitHub npx URL.
 
 Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
 
@@ -53,9 +56,10 @@ keepdrop compact  fixtures/transcript.long.json
   model        MiniMax-M3
   latency_ms   41200
   judge        $0.00588  (5275 in / 3580 out @ $0.3/$1.2 per MTok)
+  saved~       $0.0092   if dropped tokens were the next coder prompt @ $2/MTok
 ```
 
-**68% of the log gone. Six-tenths of a cent. No waitlist.**
+**68% of the log gone. Judge $0.006. Next coder prompt ~$0.009 cheaper. No waitlist.**
 
 `--markers` (not a model) on the same file: 26915 → 15159 (56.3%). Live MiniMax was more aggressive; user text stayed verbatim either way.
 
