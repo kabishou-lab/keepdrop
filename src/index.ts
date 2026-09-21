@@ -5,12 +5,14 @@ export {
   applyDecisions,
   chooseAction,
   compactTranscript,
+  pairCacheKey,
   eligiblePairs,
   estTokens,
   findToolPairs,
   isSealedPair,
   pinIndices,
   sealedPairCount,
+  type CachedJudgment,
   type CompactOptions,
 } from "./compact.js";
 export { parseTranscriptText } from "./ingest.js";

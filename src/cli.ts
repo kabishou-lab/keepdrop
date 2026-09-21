@@ -4,7 +4,7 @@ import { constants as fsConstants } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decide } from "./client.js";
-import { compactTranscript, eligiblePairs } from "./compact.js";
+import { compactTranscript, eligiblePairs, type CachedJudgment } from "./compact.js";
 import { atomicWrite } from "./fsx.js";
 import { watchFile, type WatchHandle } from "./watch.js";
 import { formatUsd, pricePerMtok } from "./cost.js";
@@ -79,6 +79,7 @@ function printCompact(
     `keepdrop compact  ${file}`,
     `  eligible     ${s.eligible}`,
     ...(s.skipped_sealed ? [`  skipped      ${s.skipped_sealed} already compacted`] : []),
+    ...(s.skipped_cached ? [`  cached       ${s.skipped_cached} unchanged pairs`] : []),
     `  keep         ${s.keep}`,
     `  drop_result  ${s.drop_result}`,
     `  drop         ${s.drop}`,
@@ -154,6 +155,7 @@ async function cmdCompact(args: string[]): Promise<void> {
       : undefined;
   let backedUp = false;
   let watcher: WatchHandle | undefined;
+  const cache = new Map<string, CachedJudgment>();
 
   const runOnce = async () => {
     const transcript = await readTranscript(file);
@@ -179,6 +181,7 @@ async function cmdCompact(args: string[]): Promise<void> {
       truncateChars: num(args, "--truncate", 300),
       pairChunk: num(args, "--pair-chunk", 4),
       judge: markers ? keywordJudge : undefined,
+      cache,
       onChunk: (done, total) => {
         if (total > 1 && !flag(args, "--quiet")) {
           process.stderr.write(`keepdrop: judging chunk ${done}/${total}\n`);

@@ -108,6 +108,7 @@ export interface CompactResult {
   stats: {
     eligible: number;
     skipped_sealed?: number;
+    skipped_cached?: number;
     keep: number;
     drop_result: number;
     drop: number;

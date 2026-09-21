@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { decide, type DecideOptions } from "./client.js";
 import { coderUsdPerMtok, pricePerMtok, usdJudge, usdSaved } from "./cost.js";
 import { noul } from "./questions.js";
@@ -36,6 +37,22 @@ export interface CompactOptions extends DecideOptions {
   truncateChars?: number;
   judge?: (state: string, questions: Record<string, Question>) => Promise<DecideResult>;
   onChunk?: (done: number, total: number) => void;
+  /** Reuse judgments for unchanged tool pairs (watch / second pass). */
+  cache?: Map<string, CachedJudgment>;
+}
+
+export interface CachedJudgment {
+  action: PairAction;
+  keep_call: number;
+  keep_result: number;
+  confidence_call: number;
+  confidence_result: number;
+}
+
+export function pairCacheKey(pair: Pick<ToolPair, "id" | "name" | "arguments" | "resultContent">): string {
+  return createHash("sha256")
+    .update(`${pair.id}\n${pair.name}\n${pair.arguments}\n${pair.resultContent}`)
+    .digest("hex");
 }
 
 export const DROPPED_MARK = "[keepdrop dropped]";
@@ -291,16 +308,34 @@ export async function compactTranscript(
       decide({ state, questions: qs }, opts));
 
   const pairChunk = Math.max(1, opts.pairChunk ?? 4);
+  const cache = opts.cache;
+  const cachedDecisions: PairDecision[] = [];
+  const need: typeof map = [];
+  for (const item of map) {
+    const hit = cache?.get(pairCacheKey(item.pair));
+    if (hit) {
+      cachedDecisions.push({
+        ...hit,
+        id: item.pair.id,
+        name: item.pair.name,
+        call_message_index: item.pair.callMessageIndex,
+        result_message_index: item.pair.resultMessageIndex,
+      });
+    } else {
+      need.push(item);
+    }
+  }
+
   const merged: Record<string, Answer> = {};
   let input_tokens = 0;
   let output_tokens = 0;
   let latency_ms = 0;
   let model: string | undefined;
   try {
-    for (let start = 0; start < map.length; start += pairChunk) {
-      const slice = map.slice(start, start + pairChunk);
+    for (let start = 0; start < need.length; start += pairChunk) {
+      const slice = need.slice(start, start + pairChunk);
       const qs = Object.assign({}, ...slice.map(questionFor));
-      opts.onChunk?.(Math.floor(start / pairChunk) + 1, Math.ceil(map.length / pairChunk));
+      opts.onChunk?.(Math.floor(start / pairChunk) + 1, Math.ceil(need.length / pairChunk) || 1);
       const judged = await judge(buildState(transcript, slice, truncateChars), qs);
       if (!judged.ok) {
         return empty({ fail_reason: judged.error });
@@ -315,8 +350,8 @@ export async function compactTranscript(
     return empty({ fail_reason: err instanceof Error ? err.message : String(err) });
   }
 
-  const decisions: PairDecision[] = [];
-  for (const item of map) {
+  const decisions: PairDecision[] = [...cachedDecisions];
+  for (const item of need) {
     const callAns = merged[item.callId];
     const resultAns = merged[item.resultId];
     if (!callAns || callAns.type !== "noul" || !resultAns || resultAns.type !== "noul") {
@@ -327,7 +362,7 @@ export async function compactTranscript(
       dropResult,
       minConfidence,
     });
-    decisions.push({
+    const dec: PairDecision = {
       id: item.pair.id,
       name: item.pair.name,
       action,
@@ -337,6 +372,14 @@ export async function compactTranscript(
       confidence_result: resultAns.confidence,
       call_message_index: item.pair.callMessageIndex,
       result_message_index: item.pair.resultMessageIndex,
+    };
+    decisions.push(dec);
+    cache?.set(pairCacheKey(item.pair), {
+      action: dec.action,
+      keep_call: dec.keep_call,
+      keep_result: dec.keep_result,
+      confidence_call: dec.confidence_call,
+      confidence_result: dec.confidence_result,
     });
   }
 
@@ -355,6 +398,7 @@ export async function compactTranscript(
     stats: {
       eligible: pairs.length,
       skipped_sealed,
+      skipped_cached: cachedDecisions.length,
       keep,
       drop_result,
       drop,
