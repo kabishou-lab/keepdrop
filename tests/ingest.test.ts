@@ -52,4 +52,37 @@ describe("parseTranscriptText", () => {
     expect(t.messages[2].tool_call_id).toBe("toolu_1");
     expect(t.messages[2].content).toMatch(/README/);
   });
+
+  it("reads a Pi session jsonl (header + toolCall/toolResult)", () => {
+    const jsonl = [
+      JSON.stringify({ type: "session", id: "s1", cwd: "/tmp/demo" }),
+      JSON.stringify({
+        type: "message",
+        message: { role: "user", content: "fix the test" },
+      }),
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "running" },
+            { type: "toolCall", id: "tc1", name: "bash", arguments: { command: "vitest" } },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "tc1",
+          content: [{ type: "text", text: "PASS 1" }],
+        },
+      }),
+    ].join("\n");
+    const t = parseTranscriptText(jsonl);
+    expect(t.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
+    expect(t.messages[1].tool_calls?.[0]).toMatchObject({ id: "tc1", name: "bash" });
+    expect(t.messages[1].tool_calls?.[0].arguments).toContain("vitest");
+    expect(t.messages[2].content).toMatch(/PASS/);
+  });
 });

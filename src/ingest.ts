@@ -29,8 +29,8 @@ function toolCallsFromContent(content: unknown): ToolCall[] {
   for (const part of content) {
     const rec = asRecord(part);
     if (!rec) continue;
-    if (rec.type !== "tool_use" && rec.type !== "tool_call") continue;
-    const id = typeof rec.id === "string" ? rec.id : "";
+    if (rec.type !== "tool_use" && rec.type !== "tool_call" && rec.type !== "toolCall") continue;
+    const id = typeof rec.id === "string" ? rec.id : typeof rec.toolCallId === "string" ? rec.toolCallId : "";
     const name = typeof rec.name === "string" ? rec.name : "tool";
     if (!id) continue;
     const input = rec.input ?? rec.arguments ?? rec.args;
@@ -49,10 +49,11 @@ function toolResultsFromContent(content: unknown): Message[] {
   for (const part of content) {
     const rec = asRecord(part);
     if (!rec) continue;
-    if (rec.type !== "tool_result") continue;
+    if (rec.type !== "tool_result" && rec.type !== "toolResult") continue;
     const id =
       (typeof rec.tool_use_id === "string" && rec.tool_use_id) ||
       (typeof rec.tool_call_id === "string" && rec.tool_call_id) ||
+      (typeof rec.toolCallId === "string" && rec.toolCallId) ||
       "";
     out.push({
       role: "tool",
@@ -74,10 +75,24 @@ function messageFromUnknown(raw: unknown): Message[] {
   const rec = asRecord(raw);
   if (!rec) return [];
   const inner = asRecord(rec.message) ?? rec;
+  const contentNode = inner.content ?? inner.text;
+  const toolCallIdEarly =
+    (typeof inner.toolCallId === "string" && inner.toolCallId) ||
+    (typeof inner.tool_call_id === "string" && inner.tool_call_id) ||
+    (typeof inner.tool_use_id === "string" && inner.tool_use_id) ||
+    "";
+  if (inner.role === "toolResult" || rec.type === "toolResult") {
+    return [
+      {
+        role: "tool",
+        tool_call_id: toolCallIdEarly || undefined,
+        content: textFromContent(contentNode),
+      },
+    ];
+  }
   const role = roleOf(inner.role) ?? (rec.type === "assistant" ? "assistant" : rec.type === "tool" ? "tool" : rec.type === "user" || rec.type === "human" ? "user" : undefined);
   if (!role) return [];
 
-  const contentNode = inner.content ?? inner.text;
   const toolCalls =
     (Array.isArray(inner.tool_calls) ? (inner.tool_calls as unknown[]) : [])
       .map((c) => {

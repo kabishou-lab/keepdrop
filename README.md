@@ -170,6 +170,8 @@ Not the default path. `keepdrop --help` lists the same flags.
 | `-o out.jsonl` / `--format jsonl` | line-oriented output |
 | `eval` / `eval --long` | short cases (9) or the long fixture (15), keyword baseline without a key |
 
+Claude Code JSONL and Pi session JSONL (`toolCall` / `toolResult`, session header skipped) are both valid `compact` input. A real public coding log has not been measured; the 68% figure above stays the synthetic fixture.
+
 Sidecar files: [`examples/gitignore`](examples/gitignore). Pi is a shell-out, not a plugin: [`examples/pi.md`](examples/pi.md).
 
 ## License
