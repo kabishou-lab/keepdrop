@@ -11,27 +11,17 @@ This is not Jev. Numbers are ordinary model estimates, not RLCD-calibrated proba
 
 ## 60 seconds
 
-No npm login required. No TypeSafe waitlist.
+Two commands. Feature flags are in [Reference](#reference). No npm package. No TypeSafe waitlist. Without a key, compact **fail-opens** (history is not deleted).
 
 ```bash
-# offline, bundled 26k-char log (not a model):
-npx github:kabishou-lab/keepdrop compact --demo --markers
+# offline shape (keyword markers, not a model):
+npx github:kabishou-lab/keepdrop compact --demo --markers --diff
 
-# live MiniMax / any OpenAI-compatible API:
-git clone https://github.com/kabishou-lab/keepdrop && cd keepdrop
-cp .env.example .env   # OPENAI_API_KEY + MiniMax-M3 defaults
-npx tsx src/cli.ts compact --demo
+# a real session: rate-limit, cache on disk, drain the queue
+keepdrop compact session.jsonl --watch --max-new 4 --diff
 ```
 
-`--diff` lists char savings per dropped pair. `--dry-run` lists eligible pairs with no API call. Do not pass `*.keepdrop-cache.json` as input. See `examples/gitignore`. `--strict` exits 2 on fail-open. `--watch` re-compacts when the file changes (self-writes ignored; unchanged pairs cached). `--cache-file` persists that cache (`file.keepdrop-cache.json` under `--watch`). `--max-new N` judges at most N new pairs per tick. `--drain` (on by default with `--watch`) repeats until pending is 0. `--in-place` rewrites the file and keeps a one-time `.bak`. `-o out.jsonl` writes JSONL. `--demo --jsonl` uses the bundled JSONL log. `keepdrop eval --long` scores the 26k-char fixture.
-
-Without a key, compact **fail-opens**: original messages are unchanged. An outage must not delete history.
-
-Offline fixture demo (not a model):
-
-```bash
-npx tsx src/cli.ts compact fixtures/transcript.sample.json --markers
-```
+Live calls need `.env` (`OPENAI_API_KEY`, default MiniMax-M3). Do not feed `*.keepdrop-cache.json`, 曜堂, medical, or employer logs.
 
 ## What compact does
 
@@ -42,7 +32,7 @@ npx tsx src/cli.ts compact fixtures/transcript.sample.json --markers
 
 Nothing is summarized. Nothing is paraphrased.
 
-Captured 2026-09-21 against **MiniMax-M3** on `fixtures/transcript.long.json` (synthetic coding-agent log, not product data):
+**Synthetic fixture only** (tagged `[stale]` / `[superseded]`, not a real agent log). Captured 2026-09-21 against MiniMax-M3 on `fixtures/transcript.long.json`:
 
 ```
 keepdrop compact  fixtures/transcript.long.json
@@ -160,6 +150,27 @@ Not a plugin. Flatten to `messages[]` and pipe. See [examples/pi.md](examples/pi
 jq -f examples/from-openai-messages.jq session.json \
   | npx tsx src/cli.ts compact - --json
 ```
+
+## Reference
+
+Not the default path. `keepdrop --help` lists the same flags.
+
+| flag | meaning |
+|---|---|
+| `--demo` / `--demo --jsonl` | bundled 26k-char synthetic log |
+| `--markers` | offline keyword judge (`[stale]` / `[superseded]`). Not a model |
+| `--diff` | per-pair character savings |
+| `--dry-run` | list eligible pairs, no API |
+| `--watch` | re-run when the file changes; ignores self-writes; drains pending |
+| `--max-new N` | at most N new pairs per judge tick |
+| `--drain` | repeat until pending is 0 (default under `--watch`) |
+| `--cache-file` | persist judgments (`*.keepdrop-cache.json` under `--watch`) |
+| `--in-place` | rewrite the file; one-time `.bak` |
+| `--strict` | exit 2 on fail-open |
+| `-o out.jsonl` / `--format jsonl` | line-oriented output |
+| `eval` / `eval --long` | short cases (9) or the long fixture (15), keyword baseline without a key |
+
+Sidecar files: [`examples/gitignore`](examples/gitignore). Pi is a shell-out, not a plugin: [`examples/pi.md`](examples/pi.md).
 
 ## License
 
